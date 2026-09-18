@@ -1,5 +1,6 @@
 import {
   ContainerBuilder,
+  EmbedBuilder,
   MessageFlags,
   SeparatorBuilder,
   SeparatorSpacingSize,

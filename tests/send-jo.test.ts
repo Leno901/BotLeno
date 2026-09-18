@@ -6,6 +6,7 @@ import {
   dispatchEntry,
   dispatchNext,
   joinQueue,
+  listDutyLine,
   nextReadyForJob,
   pickReadyForJob,
   toggleAfk,
@@ -45,6 +46,14 @@ test("pickReadyForJob skips AFK, on-duty, wrong job, then exhausted", () => {
   assert.equal(pickReadyForJob(rows, "pvp", ["d", "e"]), null);
   assert.equal(pickReadyForJob(rows, "dungeon")?.entryId, "c");
   assert.equal(pickReadyForJob(rows, "abyss"), null);
+  assert.equal(pickReadyForJob(rows, ["pvp", "dungeon"]), null);
+  assert.equal(
+    pickReadyForJob(
+      [...rows, { entryId: "f", status: "ready" as const, jobs: [{ id: "pvp" }, { id: "dungeon" }] }],
+      ["pvp", "dungeon"],
+    )?.entryId,
+    "f",
+  );
 });
 
 test("nextReadyForJob walks the duty line in order", () => {
@@ -126,6 +135,34 @@ test("dispatchEntry activates a specific READY user, not global #1", () => {
   assert.equal(stillFirst?.isAfk, false);
 
   assert.equal(nextReadyForJob(db, GUILD, pvp, [], NOW)?.userId, USER_A);
+});
+
+test("dispatchEntry stores the accepted J.O.s, not every queued job", () => {
+  const db = createTestDb();
+  const { pvp, dungeon } = ids(db);
+
+  const a = joinQueue(db, {
+    guildId: GUILD,
+    queueIds: [pvp, dungeon],
+    userId: USER_A,
+    hoursInput: "8",
+    now: NOW,
+  });
+
+  dispatchEntry(db, {
+    guildId: GUILD,
+    entryId: a.entry.id,
+    actorId: "staff",
+    queueIds: [pvp],
+    now: NOW,
+  });
+
+  const line = listDutyLine(db, GUILD, NOW);
+  assert.deepEqual(
+    line.onDuty[0]?.acceptedJobs?.map((job) => job.id),
+    [pvp],
+  );
+  assert.equal(line.onDuty[0]?.jobs.length, 2);
 });
 
 test("dispatchEntry rejects AFK and on-duty users", () => {

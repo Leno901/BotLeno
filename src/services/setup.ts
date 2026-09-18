@@ -47,6 +47,7 @@ import { queueSelectRow } from "../ui/components.js";
 import { listQueueBoard, listDutyLine } from "./queue.js";
 import { upsertDutyLineMessage } from "./display.js";
 import { ephemeral, safeReply } from "../utils/reply.js";
+import { syncStaffCommandPermissions } from "../commands/staff-visibility.js";
 
 const TEXT_PERMS = {
   view: PermissionFlagsBits.ViewChannel,
@@ -499,6 +500,23 @@ export async function runSetup(
       { guildId: guild.id, createdCount, fullyConfigured: report.fullyConfigured },
       "Setup finished",
     );
+
+    try {
+      const { putGuildCommands } = await import("../commands/deploy.js");
+      const commands = await putGuildCommands(ctx.client.rest, ctx.env.CLIENT_ID, guild.id);
+      await syncStaffCommandPermissions(
+        ctx.client.rest,
+        ctx.env.CLIENT_ID,
+        guild.id,
+        commands,
+        ids.staffRole ?? null,
+      );
+    } catch (error) {
+      ctx.logger.warn(
+        { err: error, guildId: guild.id },
+        "Staff command visibility sync failed",
+      );
+    }
 
     await interaction.editReply({
       embeds: [setupResultEmbed({ title, lines, note })],

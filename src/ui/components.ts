@@ -225,7 +225,9 @@ export function confirmClearButtons() {
 export function sendJoQueueSelect(queues: QueueWithCount[]) {
   const menu = new StringSelectMenuBuilder()
     .setCustomId(Ids.sendJoSelect)
-    .setPlaceholder("Select a J.O. category")
+    .setPlaceholder("Select J.O.s (multiple)")
+    .setMinValues(1)
+    .setMaxValues(Math.max(1, Math.min(25, queues.length)))
     .addOptions(
       queues.slice(0, 25).map((queue) =>
         new StringSelectMenuOptionBuilder()

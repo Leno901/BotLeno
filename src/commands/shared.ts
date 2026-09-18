@@ -47,4 +47,6 @@ export function adminCommand(name: string, description: string) {
   );
 }
 
+export const staffCommand = adminCommand;
+
 export { requireGuildId };

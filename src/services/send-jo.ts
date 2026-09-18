@@ -23,7 +23,7 @@ interface OfferRef {
 interface SendJoChain {
   token: string;
   guildId: string;
-  queueId: string;
+  queueIds: string[];
   queueName: string;
   offerText: string;
   staffId: string;
@@ -71,7 +71,8 @@ export async function startSendJo(
   ctx: AppContext,
   options: {
     guildId: string;
-    queueId: string;
+    queueId?: string;
+    queueIds?: string[];
     offerText: string;
     staffId: string;
   },
@@ -83,12 +84,20 @@ export async function startSendJo(
     );
   }
 
-  const queue = store.getQueue(ctx.db, options.queueId);
-  if (!queue || queue.guildId !== options.guildId) {
+  const queueIds = [...new Set(options.queueIds?.length ? options.queueIds : options.queueId ? [options.queueId] : [])];
+  const queues = queueIds.map((id) => {
+    const queue = store.getQueue(ctx.db, id);
+    if (!queue || queue.guildId !== options.guildId) {
+      throw new AppError("That J.O. category could not be found.", "QUEUE_NOT_FOUND");
+    }
+    return queue;
+  });
+  if (queues.length === 0) {
     throw new AppError("That J.O. category could not be found.", "QUEUE_NOT_FOUND");
   }
+  const queueName = queues.map((queue) => queue.name).join(", ");
 
-  const first = nextReadyForJob(ctx.db, options.guildId, options.queueId);
+  const first = nextReadyForJob(ctx.db, options.guildId, queueIds);
   if (!first) {
     throw new AppError("No one in line is READY for that J.O.", "SENDJO_EMPTY");
   }
@@ -96,8 +105,8 @@ export async function startSendJo(
   const chain: SendJoChain = {
     token: randomUUID(),
     guildId: options.guildId,
-    queueId: options.queueId,
-    queueName: queue.name,
+    queueIds,
+    queueName,
     offerText: options.offerText,
     staffId: options.staffId,
     skipEntryIds: [],
@@ -116,7 +125,7 @@ export async function startSendJo(
     throw error;
   }
 
-  return { queueName: queue.name };
+  return { queueName };
 }
 
 export async function resolveSendJo(
@@ -141,7 +150,7 @@ export async function resolveSendJo(
         guildId: chain.guildId,
         entryId: chain.currentEntryId,
         actorId: chain.staffId,
-        queueId: chain.queueId,
+        queueIds: chain.queueIds,
       });
       ctx.display.schedule(chain.guildId);
       await closeOfferMessage(ctx, chain, "accepted");
@@ -346,7 +355,7 @@ async function continueAfterReject(
   const next = nextReadyForJob(
     ctx.db,
     chain.guildId,
-    chain.queueId,
+    chain.queueIds,
     chain.skipEntryIds,
   );
 

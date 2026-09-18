@@ -56,6 +56,7 @@ export interface QueueEntry {
   offerStrikes: number;
   statusChannelId: string | null;
   statusMessageId: string | null;
+  acceptedJobIds: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -101,6 +102,7 @@ export interface DutyLineRow {
   position: number;
   status: DutyStatus;
   jobs: DutyJob[];
+  acceptedJobs?: DutyJob[];
   durationHours: number | null;
   availableFrom: string;
   availableUntil: string | null;

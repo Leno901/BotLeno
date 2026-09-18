@@ -1,4 +1,5 @@
 import {
+  PermissionFlagsBits,
   SlashCommandBuilder,
   SlashCommandSubcommandBuilder,
 } from "discord.js";
@@ -53,6 +54,7 @@ export const queueAdminCommand: BotCommand = {
     .setName("queue-admin")
     .setDescription("Staff controls for BotLenoAPP queues")
     .setDMPermission(false)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((sub) =>
       sub.setName("panel").setDescription("Open the staff queue panel"),
     )

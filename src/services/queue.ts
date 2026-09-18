@@ -3,6 +3,7 @@ import { ABSOLUTE_MAX_HOURS, SEND_JO_STRIKES_TO_REQUEUE } from "../config/defaul
 import type { Db } from "../database/client.js";
 import * as store from "../database/store.js";
 import type {
+  DutyJob,
   DutyLine,
   DutyLineRow,
   DutyStatus,
@@ -270,22 +271,33 @@ function dutyStatus(entry: QueueEntry): DutyStatus {
 }
 
 function toDutyRow(db: Db, entry: QueueEntry): DutyLineRow {
+  const jobs = store.listEntryJobs(db, entry.id).map((queue) => ({
+    id: queue.id,
+    slug: queue.slug,
+    name: queue.name,
+    emoji: queue.emoji,
+  }));
+  const acceptedJobs = entry.acceptedJobIds
+    .map((id) => jobs.find((job) => job.id === id) ?? queueJob(db, id))
+    .filter((job): job is DutyJob => Boolean(job));
   return {
     entryId: entry.id,
     userId: entry.userId,
     position: store.positionFor(db, entry),
     status: dutyStatus(entry),
-    jobs: store.listEntryJobs(db, entry.id).map((queue) => ({
-      id: queue.id,
-      slug: queue.slug,
-      name: queue.name,
-      emoji: queue.emoji,
-    })),
+    jobs,
+    acceptedJobs,
     durationHours: entry.durationHours,
     availableFrom: entry.createdAt,
     availableUntil: entry.availableUntil,
     updatedAt: entry.updatedAt,
   };
+}
+
+function queueJob(db: Db, queueId: string): DutyJob | null {
+  const queue = store.getQueue(db, queueId);
+  if (!queue) return null;
+  return { id: queue.id, slug: queue.slug, name: queue.name, emoji: queue.emoji };
 }
 
 export function listDutyLine(
@@ -362,20 +374,30 @@ export function dispatchNext(
   })();
 }
 
+function offeredQueueIds(queueId: string | readonly string[]): string[] {
+  return [...new Set(Array.isArray(queueId) ? queueId : [queueId])].filter(Boolean);
+}
+
+function hasOfferedJobs(jobs: Array<{ id: string }>, queueIds: readonly string[]): boolean {
+  return queueIds.every((id) => jobs.some((job) => job.id === id));
+}
+
 export function pickReadyForJob<
   T extends { entryId: string; status: DutyStatus; jobs: Array<{ id: string }> },
 >(
   rows: readonly T[],
-  queueId: string,
+  queueId: string | readonly string[],
   skipEntryIds: readonly string[] = [],
 ): T | null {
   const skip = new Set(skipEntryIds);
+  const needed = offeredQueueIds(queueId);
+  if (needed.length === 0) return null;
   return (
     rows.find(
       (row) =>
         row.status === "ready" &&
         !skip.has(row.entryId) &&
-        row.jobs.some((job) => job.id === queueId),
+        hasOfferedJobs(row.jobs, needed),
     ) ?? null
   );
 }
@@ -383,7 +405,7 @@ export function pickReadyForJob<
 export function nextReadyForJob(
   db: Db,
   guildId: string,
-  queueId: string,
+  queueId: string | readonly string[],
   skipEntryIds: readonly string[] = [],
   now = new Date(),
 ) {
@@ -397,6 +419,7 @@ export function dispatchEntry(
     entryId: string;
     actorId: string;
     queueId?: string;
+    queueIds?: string[];
     now?: Date;
   },
 ): UserQueueView {
@@ -410,11 +433,14 @@ export function dispatchEntry(
     if (entry.status !== "waiting" || entry.isAfk) {
       throw new AppError("That user is not READY for this J.O.", "NOT_READY");
     }
-    if (options.queueId) {
-      const jobs = store.listEntryJobs(db, entry.id);
-      if (!jobs.some((job) => job.id === options.queueId)) {
-        throw new AppError("That user is not queued for this J.O.", "NOT_READY");
-      }
+    const jobs = store.listEntryJobs(db, entry.id);
+    const offered = offeredQueueIds(options.queueIds ?? (options.queueId ? [options.queueId] : []));
+    if (offered.length > 0 && !hasOfferedJobs(jobs, offered)) {
+      throw new AppError("That user is not queued for this J.O.", "NOT_READY");
+    }
+    const accepted = offered.filter((id) => jobs.some((job) => job.id === id));
+    if (accepted.length > 0) {
+      store.updateEntryAcceptedJobs(db, entry.id, accepted);
     }
     return transitionStaff(db, {
       guildId: options.guildId,

@@ -62,6 +62,17 @@ export async function safeReply(
   }
 }
 
+/** Reply, then drop the earlier ephemeral prompt (e.g. /send-jo select). */
+export async function replaceEphemeralPrompt(
+  interaction: Interaction,
+  options: InteractionReplyOptions,
+): Promise<void> {
+  await safeReply(interaction, options);
+  if (interaction.isModalSubmit() && interaction.message) {
+    await interaction.message.delete().catch(() => undefined);
+  }
+}
+
 export async function replyAppError(
   interaction: Interaction,
   error: unknown,

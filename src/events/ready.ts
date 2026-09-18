@@ -5,6 +5,7 @@ import {
   discordApiCode,
   putGlobalCommands,
   putGuildCommands,
+  syncStaffCommandPermissions,
 } from "../commands/deploy.js";
 import { inviteUrl } from "../config/defaults.js";
 import * as store from "../database/store.js";
@@ -56,12 +57,25 @@ function deployGuildCommands(
   body = commandBodies(),
 ): void {
   void putGuildCommands(ctx.client.rest, ctx.env.CLIENT_ID, guild.id, body)
-    .then(() =>
+    .then(async (commands) => {
+      const staffRoleId = store.getGuild(ctx.db, guild.id)?.staffRoleId ?? null;
+      await syncStaffCommandPermissions(
+        ctx.client.rest,
+        ctx.env.CLIENT_ID,
+        guild.id,
+        commands,
+        staffRoleId,
+      ).catch((error) => {
+        ctx.logger.warn(
+          { err: error, guildId: guild.id, code: discordApiCode(error) },
+          "Staff command visibility sync failed",
+        );
+      });
       ctx.logger.info(
         { guildId: guild.id, name: guild.name, count: body.length },
         "Registered guild commands",
-      ),
-    )
+      );
+    })
     .catch((error) => {
       const code = discordApiCode(error);
       const missingScope = code === 50001;

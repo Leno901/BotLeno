@@ -15,6 +15,7 @@ import {
   discordApiCode,
   putGlobalCommands,
   putGuildCommands,
+  syncStaffCommandPermissions,
 } from "../src/commands/deploy.js";
 import { registerReady } from "../src/events/ready.js";
 import { createTestDb } from "./helpers.js";
@@ -32,10 +33,16 @@ test("command payload includes setup and every loaded slash command", () => {
   ]);
 });
 
-test("setup is hidden from members without Manage Server", () => {
+test("staff and admin slash commands are hidden from members", () => {
   const commands = commandBodies();
-  const setup = commands.find((command) => command.name === "setup");
-  assert.equal(setup?.default_member_permissions, PermissionFlagsBits.ManageGuild.toString());
+  const hidden = ["setup", "queue-config", "queue-admin", "send-jo"];
+  for (const name of hidden) {
+    const command = commands.find((entry) => entry.name === name);
+    assert.equal(
+      command?.default_member_permissions,
+      PermissionFlagsBits.ManageGuild.toString(),
+    );
+  }
   for (const name of ["queue", "myqueue", "leavequeue"]) {
     const command = commands.find((entry) => entry.name === name);
     assert.equal(command?.default_member_permissions, undefined);
@@ -107,4 +114,28 @@ test("ready clears global commands and registers each guild", async () => {
   const names = (guildPuts[0]?.body as { name: string }[]).map((command) => command.name);
   assert.ok(names.includes("setup"));
   assert.ok(names.includes("myqueue"));
+});
+
+test("staff command permission sync allows the staff role", async () => {
+  const routes: string[] = [];
+  const rest = {
+    async put(route: string) {
+      routes.push(route);
+      return {};
+    },
+  } as unknown as REST;
+  await syncStaffCommandPermissions(
+    rest,
+    "app-id",
+    "guild-1",
+    [
+      { id: "cmd-send", name: "send-jo" },
+      { id: "cmd-queue", name: "queue" },
+      { id: "cmd-admin", name: "queue-admin" },
+    ] as never,
+    "staff-role",
+  );
+  assert.equal(routes.length, 2);
+  assert.ok(routes[0]?.includes("cmd-send"));
+  assert.ok(routes[1]?.includes("cmd-admin"));
 });

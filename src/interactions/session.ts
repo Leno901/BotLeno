@@ -11,7 +11,7 @@ interface PendingJoin {
 }
 
 interface PendingSendJo {
-  queueId: string;
+  queueIds: string[];
   at: number;
 }
 
@@ -58,18 +58,19 @@ export function takePendingJoin(guildId: string, userId: string): string[] | nul
 export function setPendingSendJo(
   guildId: string,
   userId: string,
-  queueId: string,
+  queueIds: string[],
 ): void {
-  pendingSendJos.set(key(guildId, userId), { queueId, at: Date.now() });
+  pendingSendJos.set(key(guildId, userId), { queueIds, at: Date.now() });
 }
 
 export function takePendingSendJo(
   guildId: string,
   userId: string,
-): string | null {
+): string[] | null {
   const pending = pendingSendJos.get(key(guildId, userId));
   pendingSendJos.delete(key(guildId, userId));
   if (!pending) return null;
   if (Date.now() - pending.at > 15 * 60 * 1000) return null;
-  return isUuid(pending.queueId) ? pending.queueId : null;
+  const queueIds = pending.queueIds.filter((id) => isUuid(id));
+  return queueIds.length > 0 ? queueIds : null;
 }

@@ -59,6 +59,7 @@ interface EntryRow {
   offer_strikes: number;
   status_channel_id: string | null;
   status_message_id: string | null;
+  accepted_job_ids: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -116,9 +117,21 @@ function mapEntry(row: EntryRow): QueueEntry {
     offerStrikes: row.offer_strikes ?? 0,
     statusChannelId: row.status_channel_id ?? null,
     statusMessageId: row.status_message_id ?? null,
+    acceptedJobIds: parseAcceptedJobIds(row.accepted_job_ids),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function parseAcceptedJobIds(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((id): id is string => typeof id === "string" && id.length > 0);
+  } catch {
+    return [];
+  }
 }
 
 export function ensureGuild(
@@ -441,7 +454,7 @@ export function insertEntry(
   db: Db,
   entry: Omit<
     QueueEntry,
-    "createdAt" | "updatedAt" | "statusChannelId" | "statusMessageId" | "offerStrikes"
+    "createdAt" | "updatedAt" | "statusChannelId" | "statusMessageId" | "offerStrikes" | "acceptedJobIds"
   > & {
     createdAt?: string;
     updatedAt?: string;
@@ -562,6 +575,17 @@ export function updateOfferStrikes(db: Db, entryId: string, strikes: number): Qu
   db.prepare(
     "UPDATE queue_entries SET offer_strikes = ?, updated_at = ? WHERE id = ?",
   ).run(strikes, new Date().toISOString(), entryId);
+  return getEntry(db, entryId)!;
+}
+
+export function updateEntryAcceptedJobs(
+  db: Db,
+  entryId: string,
+  queueIds: string[],
+): QueueEntry {
+  db.prepare(
+    "UPDATE queue_entries SET accepted_job_ids = ?, updated_at = ? WHERE id = ?",
+  ).run(JSON.stringify(queueIds), new Date().toISOString(), entryId);
   return getEntry(db, entryId)!;
 }
 

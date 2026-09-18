@@ -1,5 +1,7 @@
-import { REST, Routes, type RESTPostAPIApplicationCommandsJSONBody } from "discord.js";
+import { REST, Routes, type APIApplicationCommand, type RESTPostAPIApplicationCommandsJSONBody } from "discord.js";
 import { loadCommands } from "./loader.js";
+
+export { syncStaffCommandPermissions, STAFF_SLASH_COMMANDS } from "./staff-visibility.js";
 
 export function commandBodies(): RESTPostAPIApplicationCommandsJSONBody[] {
   return [...loadCommands().values()].map((command) => command.data.toJSON());
@@ -10,8 +12,11 @@ export async function putGuildCommands(
   clientId: string,
   guildId: string,
   body: RESTPostAPIApplicationCommandsJSONBody[] = commandBodies(),
-): Promise<unknown> {
-  return rest.put(Routes.applicationGuildCommands(clientId, guildId), { body });
+): Promise<APIApplicationCommand[]> {
+  const result = await rest.put(Routes.applicationGuildCommands(clientId, guildId), {
+    body,
+  });
+  return Array.isArray(result) ? (result as APIApplicationCommand[]) : [];
 }
 
 export async function putGlobalCommands(

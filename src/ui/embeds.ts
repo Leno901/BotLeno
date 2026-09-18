@@ -71,15 +71,10 @@ export function dutyStatusBadge(status: DutyStatus): string {
 
 const NBSP = "\u00a0";
 const NAME_WIDTH = 10;
-const STATUS_WIDTH = 9;
+const STATUS_WIDTH = 6;
 const HOURS_WIDTH = 6;
 const WAIT_WIDTH = 7;
-
-function lineStatusText(status: DutyStatus): string {
-  if (status === "on_duty") return "On duty";
-  if (status === "afk") return "AFK";
-  return "In line";
-}
+const DUTY_STATUS_LEGEND = "-# 🟢 in line · 🟡 AFK · 🔴 on duty";
 
 function formatHoursSample(hours: number | null): string {
   if (hours == null) return "-".padStart(HOURS_WIDTH);
@@ -175,7 +170,7 @@ export function dutyDisplayName(entry: {
 }
 
 export function formatDutyLineHeader(): string {
-  return `${"#".padEnd(2)}${"NAME".padEnd(NAME_WIDTH)}${"STATUS".padEnd(STATUS_WIDTH)}${"HOURS".padEnd(HOURS_WIDTH)}${"WAIT".padStart(WAIT_WIDTH)}`;
+  return `${"#".padEnd(2)}${"NAME".padEnd(NAME_WIDTH)}${"HOURS".padEnd(HOURS_WIDTH)}${"WAIT".padStart(WAIT_WIDTH)} ${"STATUS".padEnd(STATUS_WIDTH)}`;
 }
 
 export function formatJobList(
@@ -268,22 +263,14 @@ export function formatDashboardEntry(
 ): string {
   const num = String(entry.position).padEnd(2);
   const name = tableCell(dutyDisplayName(entry), NAME_WIDTH);
-  const status = tableCell(lineStatusText(entry.status), STATUS_WIDTH);
   const hours = formatHoursSample(entry.durationHours);
   const wait = formatWaitSample(entry.availableFrom, now);
-  const row = `${num}${name}${status}${hours}${wait}`;
+  const row = `${num}${name}${hours}${wait} ${dutyStatusDot(entry.status)}`;
   return `${row}\n${jobArrowLine(entry.jobs, num.length)}`;
 }
 
 function wrapDutyTable(body: string): string {
-  return body
-    .split("\n")
-    .map((line) => {
-      if (!line) return line;
-      if (line.startsWith("_") && line.endsWith("_")) return `-# ${line}`;
-      return `-# \`${line}\``;
-    })
-    .join("\n");
+  return `\`\`\`\n${body}\n\`\`\``;
 }
 
 export function formatDutyLineTable(
@@ -294,19 +281,20 @@ export function formatDutyLineTable(
   const visible = line.rows.slice(0, 12);
   const header = formatDutyLineHeader();
   if (visible.length === 0) {
-    return wrapDutyTable(`${header}\n_Nobody is in the duty line._`);
+    return `${wrapDutyTable(`${header}\n_Nobody is in the duty line._`)}\n${DUTY_STATUS_LEGEND}`;
   }
 
   const rows = visible
     .map((entry) => formatDashboardEntry(entry, timezone, line.jobCount, now))
     .join("\n");
   const extra =
-    line.rows.length > 12 ? `\n-# _+${line.rows.length - 12} more_` : "";
-  return `${wrapDutyTable(`${header}\n${rows}`)}${extra}`;
+    line.rows.length > 12 ? `\n_+${line.rows.length - 12} more_` : "";
+  return `${wrapDutyTable(`${header}\n${rows}`)}${extra}\n${DUTY_STATUS_LEGEND}`;
 }
 
 function onDutyJobLabel(row: DutyLineRow): string {
-  const names = row.jobs.map((job) => asciiText(job.name) || job.name).filter(Boolean);
+  const jobs = row.acceptedJobs?.length ? row.acceptedJobs : row.jobs;
+  const names = jobs.map((job) => asciiText(job.name) || job.name).filter(Boolean);
   return names.join(", ") || "-";
 }
 
@@ -321,7 +309,7 @@ export function formatOnDutyBody(
   return line.onDuty
     .map((row) => {
       const since = row.updatedAt ?? row.availableFrom;
-      return `- <@${row.userId}> · ${onDutyJobLabel(row)} · ${formatElapsedCompact(since, now)}`;
+      return `- 🔴 <@${row.userId}> · ${onDutyJobLabel(row)} · ${formatElapsedCompact(since, now)}`;
     })
     .join("\n");
 }

@@ -431,9 +431,10 @@ test("dashboard queue rows match NAME STATUS HOURS with jobs on a ∟ line", () 
   );
   const [row, jobs] = line.split("\n");
   assert.match(row ?? "", /^1 Alex/);
-  assert.match(row ?? "", /In line/);
+  assert.match(row ?? "", /🟢/);
   assert.match(row ?? "", /2\.5h/);
-  assert.match(row ?? "", /12m$/);
+  assert.match(row ?? "", /12m/);
+  assert.match(row ?? "", /12m 🟢/);
   assert.equal(row?.includes("ADDED"), false);
   assert.match(jobs ?? "", /^    ∟ /);
   assert.match(jobs ?? "", /PvP, Abyss, Exploration, Dungeon/);
@@ -473,14 +474,15 @@ test("dashboard queue rows match NAME STATUS HOURS with jobs on a ∟ line", () 
     "Asia/Manila",
     new Date("2026-09-17T00:12:00.000Z"),
   );
-  assert.match(table, new RegExp("^-# `" + "# NAME"));
+  assert.match(table, /^```\n# NAME/);
   assert.match(table, /STATUS/);
   assert.match(table, /HOURS/);
   assert.match(table, /WAIT/);
   assert.equal(table.includes("ADDED"), false);
   assert.equal(table.includes("JOBS"), false);
-  assert.match(table, /In line/);
-  assert.match(table, /AFK/);
+  assert.match(table, /🟢/);
+  assert.match(table, /🟡/);
+  assert.match(table, /-# 🟢 in line · 🟡 AFK · 🔴 on duty/);
   assert.match(table, /    ∟ Dungeon/);
   assert.match(table, /    ∟ PvP/);
 });
@@ -628,7 +630,11 @@ test("on-duty block is a bulleted mention and job list", () => {
           displayName: "Benjo",
           position: 1,
           status: "on_duty",
-          jobs: [{ id: "q1", slug: "exploration-leveling", name: "Exploration/Leveling", emoji: "🧭" }],
+          jobs: [
+            { id: "q1", slug: "exploration-leveling", name: "Exploration/Leveling", emoji: "🧭" },
+            { id: "q2", slug: "pvp", name: "PvP", emoji: "⚔️" },
+          ],
+          acceptedJobs: [{ id: "q2", slug: "pvp", name: "PvP", emoji: "⚔️" }],
           durationHours: 2,
           availableFrom: "2026-09-17T00:00:00.000Z",
           availableUntil: null,
@@ -654,7 +660,7 @@ test("on-duty block is a bulleted mention and job list", () => {
   );
   assert.equal(
     body,
-    "- <@111> · Exploration/Leveling · 14m\n- <@222> · Exploration/Leveling · 14m",
+    "- 🔴 <@111> · PvP · 14m\n- 🔴 <@222> · Exploration/Leveling · 14m",
   );
   assert.equal(body.includes("ON DUTY"), false);
 });
@@ -676,7 +682,8 @@ test("missing job rows still show the entry's J.O. name", () => {
   const table = formatDutyLineTable(line, "Asia/Manila");
   assert.match(table, /Abyss/);
   assert.match(table, /    ∟ Abyss/);
-  const row = table.split("\n")[1] ?? "";
+  const body = table.slice(4).replace(/\n```[\s\S]*$/, "");
+  const row = body.split("\n")[1] ?? "";
   assert.equal(row.includes("—"), false);
 });
 
@@ -878,6 +885,7 @@ test("join embed hides personal status channel while the feature is off", () => 
         status: "waiting",
         isAfk: false,
         offerStrikes: 0,
+        acceptedJobIds: [],
         statusChannelId: "unknown",
         statusMessageId: null,
         createdAt: NOW.toISOString(),

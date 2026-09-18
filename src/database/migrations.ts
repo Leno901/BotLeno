@@ -175,4 +175,8 @@ ALTER TABLE queue_entries ADD COLUMN status_message_id TEXT;
     id: "008_offer_strikes",
     sql: `ALTER TABLE queue_entries ADD COLUMN offer_strikes INTEGER NOT NULL DEFAULT 0;`,
   },
+  {
+    id: "009_accepted_jobs",
+    sql: `ALTER TABLE queue_entries ADD COLUMN accepted_job_ids TEXT;`,
+  },
 ] as const;

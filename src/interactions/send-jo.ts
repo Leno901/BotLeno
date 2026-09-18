@@ -23,7 +23,7 @@ import {
   warningEmbed,
 } from "../ui/embeds.js";
 import { sendJoModal, sendJoQueueSelect } from "../ui/components.js";
-import { ephemeral, replyAppError, safeReply } from "../utils/reply.js";
+import { ephemeral, replaceEphemeralPrompt, replyAppError, safeReply, scheduleEphemeralDelete } from "../utils/reply.js";
 
 export async function startSendJoCommand(
   interaction: ChatInputCommandInteraction,
@@ -44,6 +44,7 @@ export async function startSendJoCommand(
         ],
       }),
     );
+    scheduleEphemeralDelete(interaction);
     return;
   }
 
@@ -60,6 +61,7 @@ export async function startSendJoCommand(
         ],
       }),
     );
+    scheduleEphemeralDelete(interaction);
     return;
   }
 
@@ -69,7 +71,7 @@ export async function startSendJoCommand(
       embeds: [
         infoEmbed(
           "Send J.O.",
-          "Select a J.O. category, then enter the offer message.",
+          "Select one or more J.O. categories, then enter the offer message.",
         ),
       ],
       components: [sendJoQueueSelect(queues)],
@@ -85,12 +87,13 @@ export async function handleSendJoSelect(
   staffMember(interaction, ctx);
   buttonCooldown(ctx, interaction.user.id);
 
-  const queueId = interaction.values[0];
-  if (!queueId || !isUuid(queueId)) {
+  const queueIds = interaction.values.filter((value) => isUuid(value));
+  if (queueIds.length === 0) {
     await safeReply(
       interaction,
       ephemeral({ embeds: [errorEmbed("Invalid J.O. category.")] }),
     );
+    scheduleEphemeralDelete(interaction);
     return;
   }
 
@@ -106,10 +109,11 @@ export async function handleSendJoSelect(
         ],
       }),
     );
+    scheduleEphemeralDelete(interaction);
     return;
   }
 
-  setPendingSendJo(guildId, interaction.user.id, queueId);
+  setPendingSendJo(guildId, interaction.user.id, queueIds);
   await interaction.showModal(sendJoModal());
 }
 
@@ -121,19 +125,20 @@ export async function handleSendJoModal(
   staffMember(interaction, ctx);
   buttonCooldown(ctx, interaction.user.id);
 
-  const queueId = takePendingSendJo(guildId, interaction.user.id);
-  if (!queueId) {
-    await safeReply(
+  const queueIds = takePendingSendJo(guildId, interaction.user.id);
+  if (!queueIds) {
+    await replaceEphemeralPrompt(
       interaction,
       ephemeral({
         embeds: [
           warningEmbed(
             "Selection expired",
-            "Select a J.O. category again, then enter the offer message.",
+            "Select J.O. categories again, then enter the offer message.",
           ),
         ],
       }),
     );
+    scheduleEphemeralDelete(interaction);
     return;
   }
 
@@ -143,11 +148,11 @@ export async function handleSendJoModal(
     );
     const started = await startSendJo(ctx, {
       guildId,
-      queueId,
+      queueIds,
       offerText,
       staffId: interaction.user.id,
     });
-    await safeReply(
+    await replaceEphemeralPrompt(
       interaction,
       ephemeral({
         embeds: [
@@ -158,8 +163,13 @@ export async function handleSendJoModal(
         ],
       }),
     );
+    scheduleEphemeralDelete(interaction);
   } catch (error) {
     await replyAppError(interaction, error, ctx.logger, ctx.db);
+    if (interaction.message) {
+      await interaction.message.delete().catch(() => undefined);
+    }
+    scheduleEphemeralDelete(interaction);
   }
 }
 

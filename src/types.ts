@@ -53,6 +53,7 @@ export interface QueueEntry {
   availableUntil: string | null;
   status: EntryStatus;
   isAfk: boolean;
+  offerStrikes: number;
   statusChannelId: string | null;
   statusMessageId: string | null;
   createdAt: string;

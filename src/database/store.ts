@@ -56,6 +56,7 @@ interface EntryRow {
   available_until: string | null;
   status: EntryStatus;
   is_afk: number;
+  offer_strikes: number;
   status_channel_id: string | null;
   status_message_id: string | null;
   created_at: string;
@@ -112,6 +113,7 @@ function mapEntry(row: EntryRow): QueueEntry {
     availableUntil: row.available_until,
     status: row.status,
     isAfk: Boolean(row.is_afk),
+    offerStrikes: row.offer_strikes ?? 0,
     statusChannelId: row.status_channel_id ?? null,
     statusMessageId: row.status_message_id ?? null,
     createdAt: row.created_at,
@@ -419,7 +421,7 @@ export function waitingCount(db: Db, queueId: string): number {
       `SELECT COUNT(DISTINCT e.id) AS n
        FROM queue_entries e
        JOIN queue_entry_jobs j ON j.entry_id = e.id
-       WHERE j.queue_id = ? AND e.status IN ('waiting', 'active')`,
+       WHERE j.queue_id = ? AND e.status = 'waiting'`,
     )
     .get(queueId) as { n: number };
   return row.n;
@@ -439,7 +441,7 @@ export function insertEntry(
   db: Db,
   entry: Omit<
     QueueEntry,
-    "createdAt" | "updatedAt" | "statusChannelId" | "statusMessageId"
+    "createdAt" | "updatedAt" | "statusChannelId" | "statusMessageId" | "offerStrikes"
   > & {
     createdAt?: string;
     updatedAt?: string;
@@ -556,11 +558,18 @@ export function updateEntrySortKey(
   ).run(sortKey, new Date().toISOString(), entryId);
 }
 
+export function updateOfferStrikes(db: Db, entryId: string, strikes: number): QueueEntry {
+  db.prepare(
+    "UPDATE queue_entries SET offer_strikes = ?, updated_at = ? WHERE id = ?",
+  ).run(strikes, new Date().toISOString(), entryId);
+  return getEntry(db, entryId)!;
+}
+
 export function positionFor(db: Db, entry: QueueEntry): number {
   const row = db
     .prepare(
       `SELECT COUNT(*) AS n FROM queue_entries
-       WHERE guild_id = ? AND status IN ('waiting', 'active') AND sort_key < ?`,
+       WHERE guild_id = ? AND status = 'waiting' AND sort_key < ?`,
     )
     .get(entry.guildId, entry.sortKey) as { n: number };
   return row.n + 1;

@@ -10,7 +10,9 @@ import {
   pickReadyForJob,
   toggleAfk,
 } from "../src/services/queue.js";
-import { validateOfferText } from "../src/services/send-jo.js";
+import { validateOfferText, offerDeadlineUnix } from "../src/services/send-jo.js";
+import { SEND_JO_TIMEOUT_MS } from "../src/config/defaults.js";
+import { sendJoOfferEmbed } from "../src/ui/embeds.js";
 import { createTestDb } from "./helpers.js";
 
 const GUILD = "guild-1";
@@ -181,4 +183,13 @@ test("validateOfferText trims and rejects empty or oversized text", () => {
     () => validateOfferText("x".repeat(1001)),
     (error: unknown) => isAppError(error) && error.code === "INVALID_OFFER",
   );
+});
+
+test("J.O. offer deadline is 30 seconds from send time", () => {
+  assert.equal(SEND_JO_TIMEOUT_MS, 30_000);
+  const now = 1_000_000_000_000;
+  assert.equal(offerDeadlineUnix(now), Math.floor((now + 30_000) / 1000));
+  const embed = sendJoOfferEmbed("PvP", "need a carry", offerDeadlineUnix(now));
+  assert.match(embed.data.description ?? "", /<t:\d+:R>/);
+  assert.match(embed.data.description ?? "", /<t:\d+:T>/);
 });

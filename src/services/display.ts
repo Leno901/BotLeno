@@ -16,6 +16,13 @@ import { withTransientRetry } from "./discord-retry.js";
 import { listQueueBoard, listDutyLine } from "./queue.js";
 import { syncUserStatusChannels } from "./user-status-channel.js";
 
+export function shouldRepostPanel(
+  existingId: string | null,
+  lastMessageId: string | null | undefined,
+): boolean {
+  return Boolean(existingId) && Boolean(lastMessageId) && existingId !== lastMessageId;
+}
+
 export async function upsertDutyLineMessage(
   channel: TextChannel,
   existingId: string | null,
@@ -76,11 +83,14 @@ export async function refreshGuildDisplays(
         const existing = guildConfig.panelMessageId
           ? await channel.messages.fetch(guildConfig.panelMessageId).catch(() => null)
           : null;
-        if (existing) {
+        if (existing && !shouldRepostPanel(existing.id, channel.lastMessageId)) {
           await withTransientRetry(() => existing.edit(payload));
         } else {
           const message = await withTransientRetry(() => channel.send(payload));
           store.updateGuild(ctx.db, guildId, { panelMessageId: message.id });
+          if (existing) {
+            await existing.delete().catch(() => undefined);
+          }
         }
       }
     } catch (error) {

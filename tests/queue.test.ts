@@ -16,6 +16,7 @@ import {
   listDutyLine,
   listQueueMembers,
   moveEntry,
+  recordOfferPass,
   setQueueStatus,
   skipEntry,
   toggleAfk,
@@ -773,8 +774,11 @@ test("AFK and dispatch update duty-line status", () => {
   const line = listDutyLine(db, GUILD, NOW);
   assert.equal(line.afkCount, 1);
   assert.equal(line.onDutyCount, 1);
+  assert.equal(line.inLine, 1);
+  assert.equal(line.rows.find((row) => row.userId === USER_A), undefined);
+  assert.equal(line.onDuty[0]?.userId, USER_A);
   assert.equal(line.rows.find((row) => row.userId === USER_B)?.status, "afk");
-  assert.equal(line.rows.find((row) => row.userId === USER_B)?.position, 2);
+  assert.equal(line.rows.find((row) => row.userId === USER_B)?.position, 1);
   assert.equal(
     pickReadyForJob(line.rows, queueId)?.userId,
     undefined,
@@ -919,6 +923,7 @@ test("join embed hides personal status channel while the feature is off", () => 
         availableUntil: null,
         status: "waiting",
         isAfk: false,
+        offerStrikes: 0,
         statusChannelId: "unknown",
         statusMessageId: null,
         createdAt: NOW.toISOString(),
@@ -941,4 +946,83 @@ test("join embed hides personal status channel while the feature is off", () => 
   assert.ok(names.includes("Position"));
   assert.ok(names.includes("People ahead"));
   assert.ok(names.some((name) => name.includes("Availability")));
+});
+
+test("on-duty people leave the waiting table but stay in the on-duty block", () => {
+  const db = createTestDb();
+  const queueId = pvpId(db);
+  joinQueue(db, {
+    guildId: GUILD,
+    queueId,
+    userId: USER_A,
+    hoursInput: "8",
+    now: NOW,
+  });
+  joinQueue(db, {
+    guildId: GUILD,
+    queueId,
+    userId: USER_B,
+    hoursInput: "4",
+    now: NOW,
+  });
+  dispatchNext(db, { guildId: GUILD, actorId: "staff", now: NOW });
+  const line = listDutyLine(db, GUILD, NOW);
+  assert.deepEqual(
+    line.rows.map((row) => row.userId),
+    [USER_B],
+  );
+  assert.equal(line.rows[0]?.position, 1);
+  assert.equal(line.onDuty[0]?.userId, USER_A);
+  assert.equal(line.inLine, 1);
+});
+
+test("two declined offers move the person to the end of the line", () => {
+  const db = createTestDb();
+  const queueId = pvpId(db);
+  const a = joinQueue(db, {
+    guildId: GUILD,
+    queueId,
+    userId: USER_A,
+    hoursInput: "8",
+    now: NOW,
+  });
+  joinQueue(db, {
+    guildId: GUILD,
+    queueId,
+    userId: USER_B,
+    hoursInput: "8",
+    now: NOW,
+  });
+  joinQueue(db, {
+    guildId: GUILD,
+    queueId,
+    userId: USER_C,
+    hoursInput: "8",
+    now: NOW,
+  });
+
+  const first = recordOfferPass(db, {
+    guildId: GUILD,
+    entryId: a.entry.id,
+    actorId: "staff",
+    reason: "declined",
+    now: NOW,
+  });
+  assert.equal(first.strikes, 1);
+  assert.equal(first.requeued, false);
+  assert.equal(store.positionFor(db, store.getEntry(db, a.entry.id)!), 1);
+
+  const second = recordOfferPass(db, {
+    guildId: GUILD,
+    entryId: a.entry.id,
+    actorId: "staff",
+    reason: "timeout",
+    now: NOW,
+  });
+  assert.equal(second.strikes, 2);
+  assert.equal(second.requeued, true);
+  const moved = store.getEntry(db, a.entry.id)!;
+  assert.equal(moved.status, "waiting");
+  assert.equal(moved.offerStrikes, 0);
+  assert.equal(store.positionFor(db, moved), 3);
 });

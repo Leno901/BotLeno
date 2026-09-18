@@ -171,4 +171,8 @@ ALTER TABLE queue_entries ADD COLUMN status_message_id TEXT;
     id: "007_status_category",
     sql: `ALTER TABLE guilds ADD COLUMN status_category_id TEXT;`,
   },
+  {
+    id: "008_offer_strikes",
+    sql: `ALTER TABLE queue_entries ADD COLUMN offer_strikes INTEGER NOT NULL DEFAULT 0;`,
+  },
 ] as const;

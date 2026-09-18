@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { MessageFlags } from "discord.js";
-import { upsertDutyLineMessage } from "../src/services/display.js";
+import { shouldRepostPanel, upsertDutyLineMessage } from "../src/services/display.js";
 import { isTransientDiscordError, withTransientRetry } from "../src/services/discord-retry.js";
 import type { DutyLine } from "../src/types.js";
 
@@ -97,4 +97,10 @@ test("does not delete the old dashboard if posting the new one fails", async () 
     /Service Unavailable/,
   );
   assert.equal(deleted, false);
+});
+
+test("queue-start panel is reposted when it is no longer the last message", () => {
+  assert.equal(shouldRepostPanel("panel-1", "panel-1"), false);
+  assert.equal(shouldRepostPanel("panel-1", "newer-msg"), true);
+  assert.equal(shouldRepostPanel(null, "newer-msg"), false);
 });

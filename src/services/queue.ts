@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { ABSOLUTE_MAX_HOURS } from "../config/defaults.js";
+import { ABSOLUTE_MAX_HOURS, SEND_JO_STRIKES_TO_REQUEUE } from "../config/defaults.js";
 import type { Db } from "../database/client.js";
 import * as store from "../database/store.js";
 import type {
@@ -295,8 +295,9 @@ export function listDutyLine(
   return db.transaction(() => {
     store.ensureGuild(db, guildId);
     expireGuild(db, guildId, now);
-    const rows = store.listLiveEntries(db, guildId).map((entry) => toDutyRow(db, entry));
-    const onDuty = rows.filter((row) => row.status === "on_duty");
+    const live = store.listLiveEntries(db, guildId).map((entry) => toDutyRow(db, entry));
+    const rows = live.filter((row) => row.status !== "on_duty");
+    const onDuty = live.filter((row) => row.status === "on_duty");
     return {
       rows,
       inLine: rows.length,
@@ -495,6 +496,50 @@ function transitionStaff(
       details: null,
     });
     return viewFor(db, updated, queue);
+  })();
+}
+
+export function recordOfferPass(
+  db: Db,
+  options: {
+    guildId: string;
+    entryId: string;
+    actorId: string;
+    reason: "declined" | "timeout";
+    now?: Date;
+  },
+): { strikes: number; requeued: boolean } {
+  const now = options.now ?? new Date();
+  return db.transaction(() => {
+    expireGuild(db, options.guildId, now);
+    const entry = store.getEntry(db, options.entryId);
+    if (!entry || entry.guildId !== options.guildId || entry.status !== "waiting") {
+      return { strikes: 0, requeued: false };
+    }
+    const strikes = entry.offerStrikes + 1;
+    if (strikes >= SEND_JO_STRIKES_TO_REQUEUE) {
+      store.updateEntrySortKey(db, entry.id, store.nextSortKey(db, options.guildId));
+      store.updateOfferStrikes(db, entry.id, 0);
+      store.insertHistory(db, {
+        guildId: options.guildId,
+        queueId: entry.queueId,
+        userId: entry.userId,
+        actorId: options.actorId,
+        action: "requeued",
+        details: JSON.stringify({ after: options.reason, strikes }),
+      });
+      return { strikes, requeued: true };
+    }
+    store.updateOfferStrikes(db, entry.id, strikes);
+    store.insertHistory(db, {
+      guildId: options.guildId,
+      queueId: entry.queueId,
+      userId: entry.userId,
+      actorId: options.actorId,
+      action: options.reason,
+      details: JSON.stringify({ strikes }),
+    });
+    return { strikes, requeued: false };
   })();
 }
 

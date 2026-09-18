@@ -540,7 +540,7 @@ export function sendJoOfferEmbed(
   return brandEmbed()
     .setTitle(`${queueName} J.O. offer`)
     .setDescription(
-      `${offerText}\n\nRespond **Yes** or **No** <t:${expiresAtUnix}:R>.`,
+      `${offerText}\n\nRespond **Yes** or **No** <t:${expiresAtUnix}:R> (deadline <t:${expiresAtUnix}:T>).`,
     );
 }
 

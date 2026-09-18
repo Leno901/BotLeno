@@ -11,7 +11,7 @@ import { sendJoOfferButtons } from "../ui/components.js";
 import { infoEmbed, sendJoOfferEmbed, successEmbed, warningEmbed } from "../ui/embeds.js";
 import { AppError } from "./errors.js";
 import { logQueueActivity } from "./activity-log.js";
-import { dispatchEntry, nextReadyForJob } from "./queue.js";
+import { dispatchEntry, nextReadyForJob, recordOfferPass } from "./queue.js";
 
 interface OfferRef {
   channelId: string;
@@ -60,6 +60,10 @@ export function validateOfferText(raw: string): string {
     );
   }
   return text;
+}
+
+export function offerDeadlineUnix(nowMs = Date.now()): number {
+  return Math.floor((nowMs + SEND_JO_TIMEOUT_MS) / 1000);
 }
 
 export async function startSendJo(
@@ -169,6 +173,13 @@ export async function resolveSendJo(
 
   chain.skipEntryIds.push(chain.currentEntryId);
   await closeOfferMessage(ctx, chain, "declined");
+  recordOfferPass(ctx.db, {
+    guildId: chain.guildId,
+    entryId: chain.currentEntryId,
+    actorId: chain.staffId,
+    reason: "declined",
+  });
+  ctx.display.schedule(chain.guildId);
   logQueueActivity(ctx, chain.guildId, {
     action: "J.O. declined",
     userId,
@@ -218,7 +229,7 @@ async function offerTo(
   chain.offerMessage = null;
   tokens.set(chain.token, chain.guildId);
 
-  const expiresAt = Math.floor(Date.now() / 1000) + Math.ceil(SEND_JO_TIMEOUT_MS / 1000);
+  const expiresAt = offerDeadlineUnix();
   const payload = {
     content: `<@${candidate.userId}>`,
     embeds: [sendJoOfferEmbed(chain.queueName, chain.offerText, expiresAt)],
@@ -305,6 +316,13 @@ async function onTimeout(
   const previousUserId = chain.currentUserId;
   chain.skipEntryIds.push(chain.currentEntryId);
   await closeOfferMessage(ctx, chain, "timeout");
+  recordOfferPass(ctx.db, {
+    guildId: chain.guildId,
+    entryId: chain.currentEntryId,
+    actorId: chain.staffId,
+    reason: "timeout",
+  });
+  ctx.display.schedule(chain.guildId);
   logQueueActivity(ctx, chain.guildId, {
     action: "J.O. timeout",
     userId: previousUserId,

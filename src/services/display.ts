@@ -1,4 +1,4 @@
-import { ChannelType, MessageFlags, type TextChannel } from "discord.js";
+import { ChannelType, MessageFlags, type Guild, type TextChannel } from "discord.js";
 import type { AppContext } from "../app-context.js";
 import {
   DEFAULT_PANEL_CHANNEL,
@@ -13,6 +13,7 @@ import { queuePanelEmbed } from "../ui/embeds.js";
 import { queueSelectRow } from "../ui/components.js";
 import { hydrateDisplayNames, resolveDisplayNames } from "./display-names.js";
 import { withTransientRetry } from "./discord-retry.js";
+import { AppError } from "./errors.js";
 import { listQueueBoard, listDutyLine } from "./queue.js";
 import { syncUserStatusChannels } from "./user-status-channel.js";
 
@@ -55,10 +56,76 @@ export async function upsertDutyLineMessage(
   return message.id;
 }
 
+async function resolveQueueStartChannel(
+  guild: Guild,
+  storedId: string | null,
+): Promise<TextChannel | null> {
+  if (storedId) {
+    const byId = await guild.channels.fetch(storedId).catch(() => null);
+    if (byId?.type === ChannelType.GuildText) return byId;
+  }
+  await guild.channels.fetch().catch(() => undefined);
+  const byName = guild.channels.cache.find(
+    (channel) =>
+      channel.type === ChannelType.GuildText &&
+      (channel.name === DEFAULT_PANEL_CHANNEL || channel.name === LEGACY_PANEL_CHANNEL),
+  );
+  return byName?.type === ChannelType.GuildText ? byName : null;
+}
+
+export async function upsertQueueStartPanel(
+  ctx: AppContext,
+  guild: Guild,
+  options: { force?: boolean } = {},
+): Promise<TextChannel> {
+  const guildConfig = store.getGuild(ctx.db, guild.id);
+  if (!guildConfig) {
+    throw new AppError("This server is not set up. Run `/setup` first.", "NOT_SETUP");
+  }
+
+  const channel = await resolveQueueStartChannel(guild, guildConfig.panelChannelId);
+  if (!channel) {
+    throw new AppError(
+      "Could not find **#queue-start**. Run `/setup` to recreate it.",
+      "PANEL_CHANNEL_MISSING",
+    );
+  }
+
+  if (channel.name === LEGACY_PANEL_CHANNEL) {
+    await channel.setName(DEFAULT_PANEL_CHANNEL, "Queue start").catch(() => undefined);
+  }
+  if (channel.id !== guildConfig.panelChannelId) {
+    store.updateGuild(ctx.db, guild.id, { panelChannelId: channel.id });
+  }
+
+  const queues = listQueueBoard(ctx.db, guild.id);
+  const payload = {
+    embeds: [queuePanelEmbed(queues)],
+    components: queues.length ? [queueSelectRow(queues)] : [],
+  };
+  const existing = guildConfig.panelMessageId
+    ? await channel.messages.fetch(guildConfig.panelMessageId).catch(() => null)
+    : null;
+  const reuse =
+    Boolean(existing) &&
+    !options.force &&
+    !shouldRepostPanel(existing!.id, channel.lastMessageId);
+
+  const message = reuse
+    ? await withTransientRetry(() => existing!.edit(payload))
+    : await withTransientRetry(() => channel.send(payload));
+  await message.pin().catch(() => undefined);
+  store.updateGuild(ctx.db, guild.id, { panelMessageId: message.id });
+  if (!reuse && existing) {
+    await existing.delete().catch(() => undefined);
+  }
+  return channel;
+}
+
 export async function refreshGuildDisplays(
   ctx: AppContext,
   guildId: string,
-  options: { forcePanel?: boolean } = {},
+  options: { forcePanel?: boolean; requirePanel?: boolean } = {},
 ): Promise<void> {
   const guildConfig = store.getGuild(ctx.db, guildId);
   if (!guildConfig) return;
@@ -66,41 +133,11 @@ export async function refreshGuildDisplays(
   const discordGuild = await ctx.client.guilds.fetch(guildId).catch(() => null);
   if (!discordGuild) return;
 
-  const queues = listQueueBoard(ctx.db, guildId);
-
-  if (guildConfig.panelChannelId) {
-    try {
-      const channel = await discordGuild.channels.fetch(guildConfig.panelChannelId);
-      if (channel?.type === ChannelType.GuildText) {
-        if (channel.name === LEGACY_PANEL_CHANNEL) {
-          await channel
-            .setName(DEFAULT_PANEL_CHANNEL, "Queue start")
-            .catch(() => undefined);
-        }
-        const payload = {
-          embeds: [queuePanelEmbed(queues)],
-          components: queues.length ? [queueSelectRow(queues)] : [],
-        };
-        const existing = guildConfig.panelMessageId
-          ? await channel.messages.fetch(guildConfig.panelMessageId).catch(() => null)
-          : null;
-        if (
-          existing &&
-          !options.forcePanel &&
-          !shouldRepostPanel(existing.id, channel.lastMessageId)
-        ) {
-          await withTransientRetry(() => existing.edit(payload));
-        } else {
-          const message = await withTransientRetry(() => channel.send(payload));
-          store.updateGuild(ctx.db, guildId, { panelMessageId: message.id });
-          if (existing) {
-            await existing.delete().catch(() => undefined);
-          }
-        }
-      }
-    } catch (error) {
-      ctx.logger.warn({ err: error, guildId }, "Failed to refresh queue panel");
-    }
+  try {
+    await upsertQueueStartPanel(ctx, discordGuild, { force: options.forcePanel });
+  } catch (error) {
+    if (options.requirePanel) throw error;
+    ctx.logger.warn({ err: error, guildId }, "Failed to refresh queue panel");
   }
 
   if (guildConfig.statusChannelId) {

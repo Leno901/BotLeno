@@ -115,14 +115,18 @@ export const queueAdminCommand: BotCommand = {
         return;
       }
       if (sub === "refresh") {
-        await refreshGuildDisplays(ctx, guildId, { forcePanel: true });
+        await interaction.deferReply({ ephemeral: true });
+        await refreshGuildDisplays(ctx, guildId, {
+          forcePanel: true,
+          requirePanel: true,
+        });
         await safeReply(
           interaction,
           ephemeral({
             embeds: [
               successEmbed(
                 "Queue start refreshed",
-                "Reposted **#queue-start** and updated the dashboard.",
+                "Posted the job panel in **#queue-start** and updated the dashboard.",
               ),
             ],
           }),

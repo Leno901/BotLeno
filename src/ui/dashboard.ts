@@ -10,6 +10,7 @@ import type { DutyLine, DutyLineRow } from "../types.js";
 import { discordTimestamp, formatClock } from "../services/time.js";
 import { userStatusButtons } from "./components.js";
 import { dutyStatusBadge, formatDutyLineTable, formatOnDutyBody } from "./embeds.js";
+import { sansItalic } from "./text-style.js";
 
 export function dutyLineDashboardPayload(
   line: DutyLine,
@@ -21,8 +22,8 @@ export function dutyLineDashboardPayload(
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         [
-          "## DUTY LINE",
-          `🟢 **LIVE**`,
+          `## ${sansItalic("DUTY LINE")}`,
+          `🟢 **${sansItalic("LIVE")}**`,
           `${line.inLine} in line • ${line.afkCount} AFK • ${line.onDutyCount} on duty • Updated ${discordTimestamp(updatedAt, "R")}`,
         ].join("\n"),
       ),
@@ -32,7 +33,7 @@ export function dutyLineDashboardPayload(
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `**QUEUE**\n${formatDutyLineTable(line, timezone, updatedAt)}`,
+        `**${sansItalic("QUEUE")}**\n${formatDutyLineTable(line, timezone, updatedAt)}`,
       ),
     )
     .addSeparatorComponents(
@@ -40,12 +41,12 @@ export function dutyLineDashboardPayload(
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `**On duty**\n${formatOnDutyBody(line, timezone, updatedAt)}`,
+        `**${sansItalic("On duty")}**\n${formatOnDutyBody(line, timezone, updatedAt)}`,
       ),
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# BotLenoAPP • Queue Management · ${formatClock(updatedAt, timezone)}`,
+        `-# ${sansItalic("BotLenoAPP")} • ${sansItalic("Queue Management")} · ${formatClock(updatedAt, timezone)}`,
       ),
     );
 

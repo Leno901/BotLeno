@@ -10,7 +10,6 @@ import { listQueueBoard } from "../services/queue.js";
 import { parseOfferJobHours } from "../services/hours.js";
 import { AppError } from "../services/errors.js";
 import {
-  isSendJoBusy,
   startSendJo,
   resolveSendJo,
   validateOfferText,
@@ -33,22 +32,6 @@ export async function startSendJoCommand(
 ): Promise<void> {
   const guildId = requireGuildId(interaction);
   staffMember(interaction, ctx);
-
-  if (isSendJoBusy(guildId)) {
-    await safeReply(
-      interaction,
-      ephemeral({
-        embeds: [
-          warningEmbed(
-            "Offer in progress",
-            "A J.O. offer is already in progress. Wait until it finishes.",
-          ),
-        ],
-      }),
-    );
-    scheduleEphemeralDelete(interaction);
-    return;
-  }
 
   const queues = listQueueBoard(ctx.db, guildId);
   if (queues.length === 0) {
@@ -94,22 +77,6 @@ export async function handleSendJoSelect(
     await safeReply(
       interaction,
       ephemeral({ embeds: [errorEmbed("Invalid J.O. category.")] }),
-    );
-    scheduleEphemeralDelete(interaction);
-    return;
-  }
-
-  if (isSendJoBusy(guildId)) {
-    await safeReply(
-      interaction,
-      ephemeral({
-        embeds: [
-          warningEmbed(
-            "Offer in progress",
-            "A J.O. offer is already in progress. Wait until it finishes.",
-          ),
-        ],
-      }),
     );
     scheduleEphemeralDelete(interaction);
     return;

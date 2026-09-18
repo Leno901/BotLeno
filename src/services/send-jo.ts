@@ -13,6 +13,7 @@ import { infoEmbed, sendJoOfferEmbed, sendJoOfferResultEmbed, successEmbed, warn
 import { AppError } from "./errors.js";
 import { logQueueActivity } from "./activity-log.js";
 import { dispatchEntry, nextReadyForJob, recordOfferPass } from "./queue.js";
+import { discordTimestamp } from "./time.js";
 
 interface OfferRef {
   channelId: string;
@@ -21,6 +22,7 @@ interface OfferRef {
 }
 
 interface SendJoChain {
+  id: string;
   token: string;
   guildId: string;
   queueIds: string[];
@@ -28,6 +30,7 @@ interface SendJoChain {
   offerText: string;
   jobHours: number;
   staffId: string;
+  startedAt: Date;
   skipEntryIds: string[];
   currentEntryId: string;
   currentUserId: string;
@@ -38,8 +41,25 @@ interface SendJoChain {
 const chains = new Map<string, SendJoChain>();
 const tokens = new Map<string, string>();
 
-export function isSendJoBusy(guildId: string): boolean {
-  return chains.has(guildId);
+function occupiedEntryIds(guildId: string, except?: SendJoChain): string[] {
+  const ids: string[] = [];
+  for (const other of chains.values()) {
+    if (except && other.id === except.id) continue;
+    if (other.guildId !== guildId) continue;
+    if (other.currentEntryId) ids.push(other.currentEntryId);
+  }
+  return ids;
+}
+
+function nextCandidate(ctx: AppContext, chain: SendJoChain) {
+  return nextReadyForJob(
+    ctx.db,
+    chain.guildId,
+    chain.queueIds,
+    [...chain.skipEntryIds, ...occupiedEntryIds(chain.guildId, chain)],
+    new Date(),
+    chain.jobHours,
+  );
 }
 
 export function stopSendJoChains(): void {
@@ -79,13 +99,6 @@ export async function startSendJo(
     staffId: string;
   },
 ): Promise<{ queueName: string }> {
-  if (chains.has(options.guildId)) {
-    throw new AppError(
-      "A J.O. offer is already in progress. Wait until it finishes.",
-      "SENDJO_BUSY",
-    );
-  }
-
   const queueIds = [...new Set(options.queueIds?.length ? options.queueIds : options.queueId ? [options.queueId] : [])];
   const queues = queueIds.map((id) => {
     const queue = store.getQueue(ctx.db, id);
@@ -103,7 +116,7 @@ export async function startSendJo(
     ctx.db,
     options.guildId,
     queueIds,
-    [],
+    occupiedEntryIds(options.guildId),
     new Date(),
     options.jobHours,
   );
@@ -112,6 +125,7 @@ export async function startSendJo(
   }
 
   const chain: SendJoChain = {
+    id: randomUUID(),
     token: randomUUID(),
     guildId: options.guildId,
     queueIds,
@@ -119,19 +133,20 @@ export async function startSendJo(
     offerText: options.offerText,
     jobHours: options.jobHours,
     staffId: options.staffId,
+    startedAt: new Date(),
     skipEntryIds: [],
     currentEntryId: first.entryId,
     currentUserId: first.userId,
     offerMessage: null,
   };
 
-  chains.set(options.guildId, chain);
-  tokens.set(chain.token, options.guildId);
+  chains.set(chain.id, chain);
+  tokens.set(chain.token, chain.id);
 
   try {
     await offerTo(ctx, chain, first);
   } catch (error) {
-    release(options.guildId);
+    release(chain);
     throw error;
   }
 
@@ -172,11 +187,11 @@ export async function resolveSendJo(
       });
       await notifyStaff(
         ctx,
-        chain.guildId,
+        chain,
         "J.O. accepted",
         `<@${userId}> accepted **${chain.queueName}** and is now **ON DUTY**.`,
       );
-      release(chain.guildId);
+      release(chain);
       ctx.logger.info(
         { guildId: chain.guildId, userId, entryId: view.entry.id },
         "Send-jo accepted",
@@ -211,26 +226,25 @@ export async function resolveSendJo(
 }
 
 function chainByToken(token: string): SendJoChain | undefined {
-  const guildId = tokens.get(token);
-  if (!guildId) return undefined;
-  const chain = chains.get(guildId);
+  const chainId = tokens.get(token);
+  if (!chainId) return undefined;
+  const chain = chains.get(chainId);
   if (!chain || chain.token !== token) return undefined;
   return chain;
 }
 
-function release(guildId: string): void {
-  const chain = chains.get(guildId);
-  if (!chain) return;
+function release(chain: SendJoChain): void {
   if (chain.timer) clearTimeout(chain.timer);
   tokens.delete(chain.token);
-  chains.delete(guildId);
+  chains.delete(chain.id);
 }
 
 function armTimer(ctx: AppContext, chain: SendJoChain): void {
   if (chain.timer) clearTimeout(chain.timer);
   const token = chain.token;
+  const chainId = chain.id;
   chain.timer = setTimeout(() => {
-    void onTimeout(ctx, chain.guildId, token).catch((error) => {
+    void onTimeout(ctx, chainId, token).catch((error) => {
       ctx.logger.warn({ err: error, guildId: chain.guildId }, "Send-jo timeout failed");
     });
   }, SEND_JO_TIMEOUT_MS);
@@ -242,12 +256,17 @@ async function offerTo(
   candidate: DutyLineRow,
   alreadyAnnounced = false,
 ): Promise<void> {
+  if (occupiedEntryIds(chain.guildId, chain).includes(candidate.entryId)) {
+    await continueAfterReject(ctx, chain, "busy", candidate.userId);
+    return;
+  }
+
   tokens.delete(chain.token);
   chain.token = randomUUID();
   chain.currentEntryId = candidate.entryId;
   chain.currentUserId = candidate.userId;
   chain.offerMessage = null;
-  tokens.set(chain.token, chain.guildId);
+  tokens.set(chain.token, chain.id);
 
   const expiresAt = offerDeadlineUnix();
   const art = withJoArt(sendJoOfferEmbed(chain.queueName, chain.offerText, expiresAt), "offer");
@@ -291,7 +310,7 @@ async function offerTo(
   if (!alreadyAnnounced) {
     await notifyStaff(
       ctx,
-      chain.guildId,
+      chain,
       "J.O. offered",
       `Offering **${chain.queueName}** to <@${candidate.userId}>.`,
     );
@@ -331,10 +350,10 @@ async function postPanelFallback(
 
 async function onTimeout(
   ctx: AppContext,
-  guildId: string,
+  chainId: string,
   token: string,
 ): Promise<void> {
-  const chain = chains.get(guildId);
+  const chain = chains.get(chainId);
   if (!chain || chain.token !== token) return;
 
   const previousUserId = chain.currentUserId;
@@ -359,17 +378,10 @@ async function onTimeout(
 async function continueAfterReject(
   ctx: AppContext,
   chain: SendJoChain,
-  reason: "declined" | "timeout" | "unreachable",
+  reason: "declined" | "timeout" | "unreachable" | "busy",
   previousUserId: string,
 ): Promise<void> {
-  const next = nextReadyForJob(
-    ctx.db,
-    chain.guildId,
-    chain.queueIds,
-    chain.skipEntryIds,
-    new Date(),
-    chain.jobHours,
-  );
+  const next = nextCandidate(ctx, chain);
 
   if (!next) {
     logQueueActivity(ctx, chain.guildId, {
@@ -379,11 +391,11 @@ async function continueAfterReject(
     });
     await notifyStaff(
       ctx,
-      chain.guildId,
+      chain,
       "No one accepted",
       `No one in line accepted this **${chain.queueName}** J.O.`,
     );
-    release(chain.guildId);
+    release(chain);
     return;
   }
 
@@ -392,11 +404,13 @@ async function continueAfterReject(
       ? "declined"
       : reason === "timeout"
         ? "did not respond and was skipped"
-        : "could not be reached";
+        : reason === "busy"
+          ? "already has an offer"
+          : "could not be reached";
 
   await notifyStaff(
     ctx,
-    chain.guildId,
+    chain,
     "Offering next",
     `<@${previousUserId}> ${reasonText} — offering <@${next.userId}>.`,
   );
@@ -411,7 +425,7 @@ async function continueAfterReject(
     await offerTo(ctx, chain, next, true);
   } catch (error) {
     ctx.logger.warn({ err: error, guildId: chain.guildId }, "Send-jo continue failed");
-    release(chain.guildId);
+    release(chain);
   }
 }
 
@@ -451,23 +465,27 @@ async function closeOfferMessage(
 
 async function notifyStaff(
   ctx: AppContext,
-  guildId: string,
+  chain: SendJoChain,
   title: string,
   description: string,
 ): Promise<void> {
-  const config = store.getGuild(ctx.db, guildId);
+  const config = store.getGuild(ctx.db, chain.guildId);
   if (!config?.adminChannelId) return;
   try {
     const channel = await ctx.client.channels.fetch(config.adminChannelId);
     if (channel?.type !== ChannelType.GuildText) return;
+    const body = `${description}\n<@${chain.staffId}> · ${discordTimestamp(chain.startedAt)}`;
     const embed =
       title === "J.O. accepted"
-        ? successEmbed(title, description)
+        ? successEmbed(title, body)
         : title === "No one accepted"
-          ? warningEmbed(title, description)
-          : infoEmbed(title, description);
-    await channel.send({ embeds: [embed] });
+          ? warningEmbed(title, body)
+          : infoEmbed(title, body);
+    await channel.send({
+      allowedMentions: { parse: [] },
+      embeds: [embed],
+    });
   } catch (error) {
-    ctx.logger.warn({ err: error, guildId }, "Failed to notify staff about send-jo");
+    ctx.logger.warn({ err: error, guildId: chain.guildId }, "Failed to notify staff about send-jo");
   }
 }

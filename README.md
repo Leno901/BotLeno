@@ -1,6 +1,8 @@
 # BotLenoAPP
 
-Discord queue/job management for servers. Users join a job order (PvP, Dungeon, Abyss, Pet Farm, Exploration/Leveling by default), enter how many hours they can work, and the bot calculates **Available until** in the server timezone. Staff manage queues from Discord. **SQLite is the source of truth**; Discord messages are only the UI.
+Discord queue/job management for servers. Users join a job order (PvP, Dungeon, Abyss, Pet Farm, Exploration/Leveling by default), set per-job hour limits, and wait in the duty line. Staff offer jobs from Discord. **SQLite is the source of truth**; Discord messages are only the UI.
+
+**How to use it:** [USAGE.md](USAGE.md) (members, staff, and admins). This file is install, `/setup`, and operations.
 
 ## Requirements
 
@@ -152,7 +154,7 @@ Availability expires from the stored timestamp. A background worker checks every
 
 ## Staff J.O. offers
 
-Staff (BotLenoAPP Staff role or Manage Server) run `/send-jo`, pick a J.O. category, and type the offer. BotLeno DMs the first **READY** person in line who selected that job (skips AFK and ON DUTY). They have **20 seconds** to press Yes or No. Decline or timeout immediately offers the next matching person. Only one offer chain can run per server at a time. If DMs are closed, the offer is posted in `#queue-start` with a mention and auto-deleted afterward.
+Staff (BotLenoAPP Staff role or Manage Server) run `/send-jo`, pick a J.O. category, and type the offer. BotLeno DMs the first **READY** person in line who selected that job (skips AFK, ON DUTY, and anyone who already has a live offer). They have **20 seconds** to press Yes or No. Decline or timeout immediately offers the next matching person. Several staff can send J.O.s at once. If DMs are closed, the offer is posted in `#queue-start` with a mention and auto-deleted afterward.
 
 ## Configuration
 

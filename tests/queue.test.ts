@@ -23,9 +23,9 @@ import {
   toggleAfk,
   pickReadyForJob,
 } from "../src/services/queue.js";
-import { formatDashboardEntry, formatDutyLineTable, formatJobList, formatJobTable, formatOnDutyBody, formatQueuePanelLines, jobHoursSetupEmbed, joinedEmbed, pickDiscordDisplayName, queuePanelEmbed } from "../src/ui/embeds.js";
+import { formatDashboardEntry, formatDutyLineTable, formatJobList, formatJobTable, formatOnDutyBody, formatQueuePanelLines, joinedEmbed, pickDiscordDisplayName, queuePanelEmbed } from "../src/ui/embeds.js";
 import { buildQueueEmbed, dutyLineDashboardPayload, formatEntry } from "../src/ui/dashboard.js";
-import { jobHoursSetupRows, userQueueButtons } from "../src/ui/components.js";
+import { joinHoursModal, userQueueButtons } from "../src/ui/components.js";
 import { personalStatusChannelName, isPersonalStatusChannelName, personalStatusOverwrites, statusCategoryOverwrites } from "../src/services/user-status-channel.js";
 import { PERSONAL_STATUS_CHANNELS_ENABLED } from "../src/config/defaults.js";
 import { createTestDb } from "./helpers.js";
@@ -1155,17 +1155,21 @@ test("job hour prefs persist and skip send-jo without strikes", () => {
   assert.equal(store.getEntry(db, joined.entry.id)?.offerStrikes, 0);
 });
 
-test("job hours setup is one number per job with max or min", () => {
-  const abyss = { id: "abyss", name: "Abyss", emoji: "✨" };
-  const dungeon = { id: "dungeon", name: "Dungeon", emoji: "🏰" };
-  const prefs = {
-    abyss: { min: null, max: 12 },
-    dungeon: { min: 15, max: null },
-  };
-  const embed = jobHoursSetupEmbed([abyss, dungeon], prefs);
-  assert.match(embed.data.description ?? "", /\*\*Abyss:\*\* ≤12h/);
-  assert.match(embed.data.description ?? "", /\*\*Dungeon:\*\* ≥15h/);
-  const rows = jobHoursSetupRows([abyss, dungeon], prefs);
-  const labels = rows.flatMap((row) => row.components.map((button) => button.data.label));
-  assert.deepEqual(labels, ["Abyss Max", "Abyss Min", "Dungeon Max", "Dungeon Min", "Continue"]);
+test("join hours modal is max and min number fields per job", () => {
+  const modal = joinHoursModal([
+    { id: "explo", name: "Exploration/Leveling" },
+    { id: "abyss", name: "Abyss" },
+  ]);
+  const fields = modal.components.map((row) => row.components[0]!.data);
+  assert.equal(modal.data.title, "Job Hours");
+  assert.deepEqual(
+    fields.map((field) => field.custom_id),
+    ["j:max:explo", "j:min:explo", "j:max:abyss", "j:min:abyss"],
+  );
+  assert.deepEqual(
+    fields.map((field) => field.label),
+    ["Exploration Max", "Exploration Min", "Abyss Max", "Abyss Min"],
+  );
+  assert.equal(fields[0]?.placeholder, "hours or empty");
+  assert.equal(fields[0]?.required, false);
 });

@@ -1,4 +1,3 @@
-import type { JobHourPref } from "../types.js";
 import { isUuid } from "./ids.js";
 
 export interface AdminSession {
@@ -6,9 +5,8 @@ export interface AdminSession {
   entryId?: string;
 }
 
-export interface PendingJoin {
+interface PendingJoin {
   queueIds: string[];
-  jobHourPrefs: Record<string, JobHourPref>;
   at: number;
 }
 
@@ -46,44 +44,15 @@ export function setPendingJoin(
   userId: string,
   queueIds: string[],
 ): void {
-  pendingJoins.set(key(guildId, userId), {
-    queueIds,
-    jobHourPrefs: {},
-    at: Date.now(),
-  });
+  pendingJoins.set(key(guildId, userId), { queueIds, at: Date.now() });
 }
 
-function livePendingJoin(guildId: string, userId: string): PendingJoin | null {
+export function takePendingJoin(guildId: string, userId: string): string[] | null {
   const pending = pendingJoins.get(key(guildId, userId));
-  if (!pending) return null;
-  if (Date.now() - pending.at > 15 * 60 * 1000) {
-    pendingJoins.delete(key(guildId, userId));
-    return null;
-  }
-  return pending;
-}
-
-export function peekPendingJoin(guildId: string, userId: string): PendingJoin | null {
-  return livePendingJoin(guildId, userId);
-}
-
-export function patchPendingJoinHours(
-  guildId: string,
-  userId: string,
-  queueId: string,
-  pref: JobHourPref,
-): PendingJoin | null {
-  const pending = livePendingJoin(guildId, userId);
-  if (!pending || !pending.queueIds.includes(queueId)) return null;
-  pending.jobHourPrefs[queueId] = pref;
-  pending.at = Date.now();
-  return pending;
-}
-
-export function takePendingJoin(guildId: string, userId: string): PendingJoin | null {
-  const pending = livePendingJoin(guildId, userId);
   pendingJoins.delete(key(guildId, userId));
-  return pending;
+  if (!pending) return null;
+  if (Date.now() - pending.at > 15 * 60 * 1000) return null;
+  return pending.queueIds;
 }
 
 export function setPendingSendJo(

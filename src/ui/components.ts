@@ -9,7 +9,7 @@ import {
   TextInputStyle,
 } from "discord.js";
 import type { Queue, QueueWithCount } from "../types.js";
-import { Ids } from "../interactions/ids.js";
+import { Ids, joinJobBoundFieldId } from "../interactions/ids.js";
 import { queueStatusLabel } from "./embeds.js";
 import { SEND_JO_OFFER_MAX_LENGTH } from "../config/defaults.js";
 
@@ -102,83 +102,34 @@ export function leaveConfirmButtons() {
   );
 }
 
-export function hoursModal() {
-  const hours = new TextInputBuilder()
-    .setCustomId("hours")
-    .setLabel("How many hours can you work? (optional)")
-    .setStyle(TextInputStyle.Short)
-    .setPlaceholder("Optional · max 24 hours")
-    .setRequired(false)
-    .setMaxLength(5);
+export function joinHoursModal(queues: Array<{ id: string; name: string }>) {
+  const rows: ActionRowBuilder<TextInputBuilder>[] = [];
+
+  for (const queue of queues) {
+    const slash = queue.name.indexOf("/");
+    const short = (slash > 0 ? queue.name.slice(0, slash).trim() : queue.name) || "Job";
+    for (const bound of ["max", "min"] as const) {
+      if (rows.length >= 5) break;
+      const label = bound === "max" ? "Max" : "Min";
+      rows.push(
+        new ActionRowBuilder<TextInputBuilder>().addComponents(
+          new TextInputBuilder()
+            .setCustomId(joinJobBoundFieldId(queue.id, bound))
+            .setLabel(`${short} ${label}`.slice(0, 45))
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder("hours or empty")
+            .setRequired(false)
+            .setMaxLength(5),
+        ),
+      );
+    }
+    if (rows.length >= 5) break;
+  }
 
   return new ModalBuilder()
     .setCustomId(Ids.joinModal)
-    .setTitle("Join Duty Line")
-    .addComponents(
-      new ActionRowBuilder<TextInputBuilder>().addComponents(hours),
-    );
-}
-
-function jobHourButtonLabel(name: string, bound: "Max" | "Min"): string {
-  const slash = name.indexOf("/");
-  const short = (slash > 0 ? name.slice(0, slash).trim() : name).slice(0, 70);
-  return `${short} ${bound}`.slice(0, 80);
-}
-
-export function jobHoursSetupRows(
-  queues: Array<{ id: string; name: string }>,
-  prefs: Record<string, { min?: number | null; max?: number | null }>,
-) {
-  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
-  const shown = queues.slice(0, 8);
-  for (let i = 0; i < shown.length; i += 2) {
-    const row = new ActionRowBuilder<ButtonBuilder>();
-    for (const queue of shown.slice(i, i + 2)) {
-      const pref = prefs[queue.id];
-      const isMax = pref != null && pref.max != null && pref.min == null;
-      const isMin = pref != null && pref.min != null && pref.max == null;
-      row.addComponents(
-        new ButtonBuilder()
-          .setCustomId(`${Ids.joinJobMaxPrefix}${queue.id}`)
-          .setLabel(jobHourButtonLabel(queue.name, "Max"))
-          .setStyle(isMax ? ButtonStyle.Success : ButtonStyle.Secondary),
-        new ButtonBuilder()
-          .setCustomId(`${Ids.joinJobMinPrefix}${queue.id}`)
-          .setLabel(jobHourButtonLabel(queue.name, "Min"))
-          .setStyle(isMin ? ButtonStyle.Success : ButtonStyle.Secondary),
-      );
-    }
-    rows.push(row);
-  }
-  rows.push(
-    new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId(Ids.joinJobHoursDone)
-        .setLabel("Continue")
-        .setStyle(ButtonStyle.Primary),
-    ),
-  );
-  return rows;
-}
-
-export function jobHourNumberModal(
-  queueId: string,
-  queueName: string,
-  bound: "max" | "min",
-) {
-  const hours = new TextInputBuilder()
-    .setCustomId("hours")
-    .setLabel(bound === "max" ? "Maximum hours" : "Minimum hours")
-    .setStyle(TextInputStyle.Short)
-    .setPlaceholder("12")
-    .setRequired(true)
-    .setMaxLength(5);
-
-  const title = queueName.length <= 45 ? queueName : `${queueName.slice(0, 44)}.`;
-  return new ModalBuilder()
-    .setCustomId(`${Ids.joinJobNumModalPrefix}${bound}:${queueId}`)
-    .setTitle(title)
-    .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(hours));
+    .setTitle("Job Hours")
+    .addComponents(...rows);
 }
 
 export function adminQueueSelect(queues: QueueWithCount[]) {

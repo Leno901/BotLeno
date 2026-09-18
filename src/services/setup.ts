@@ -21,6 +21,7 @@ import {
   LEGACY_PANEL_CHANNEL,
   LEGACY_STATUS_CHANNEL,
   PERSONAL_STATUS_CHANNELS_ENABLED,
+  QUEUE_BOARD_DENY_PERMS,
 } from "../config/defaults.js";
 import type { AppContext } from "../app-context.js";
 import * as store from "../database/store.js";
@@ -57,7 +58,16 @@ const TEXT_PERMS = {
   history: PermissionFlagsBits.ReadMessageHistory,
   manageMessages: PermissionFlagsBits.ManageMessages,
   addReactions: PermissionFlagsBits.AddReactions,
+  createPublicThreads: PermissionFlagsBits.CreatePublicThreads,
+  createPrivateThreads: PermissionFlagsBits.CreatePrivateThreads,
+  sendInThreads: PermissionFlagsBits.SendMessagesInThreads,
 } as const;
+
+const NO_THREADS = [
+  TEXT_PERMS.createPublicThreads,
+  TEXT_PERMS.createPrivateThreads,
+  TEXT_PERMS.sendInThreads,
+] as const;
 
 function asNamed(resource: { id: string; name: string } | null): NamedResource | null {
   return resource ? { id: resource.id, name: resource.name } : null;
@@ -565,7 +575,7 @@ function panelOverwrites(guild: Guild, botRole: Role, staffRole: Role): Overwrit
     {
       id: guild.id,
       allow: [TEXT_PERMS.view, TEXT_PERMS.history],
-      deny: [TEXT_PERMS.send],
+      deny: [...QUEUE_BOARD_DENY_PERMS],
     },
     {
       id: botRole.id,
@@ -576,10 +586,12 @@ function panelOverwrites(guild: Guild, botRole: Role, staffRole: Role): Overwrit
         TEXT_PERMS.history,
         TEXT_PERMS.manageMessages,
       ],
+      deny: [...NO_THREADS],
     },
     {
       id: staffRole.id,
       allow: [TEXT_PERMS.view, TEXT_PERMS.history, TEXT_PERMS.send],
+      deny: [...NO_THREADS],
     },
   ];
 }

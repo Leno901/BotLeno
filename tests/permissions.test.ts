@@ -7,6 +7,7 @@ import {
   memberHasStaffAccess,
   missingPermissionNames,
 } from "../src/services/permissions.js";
+import { QUEUE_BOARD_DENY_PERMS } from "../src/config/defaults.js";
 
 test("lists every missing setup permission by name", () => {
   const missing = missingPermissionNames(0n);
@@ -63,4 +64,12 @@ test("staff access is granted by Manage Guild or the configured staff role", () 
 test("guild managers are detected from the Manage Guild bit", () => {
   assert.equal(isGuildManager(PermissionFlagsBits.ManageGuild), true);
   assert.equal(isGuildManager(PermissionFlagsBits.SendMessages), false);
+});
+
+test("queue-start and queue-dashboard deny chatting and threads", () => {
+  const deny = QUEUE_BOARD_DENY_PERMS.reduce((bits, bit) => bits | bit, 0n);
+  assert.equal((deny & PermissionFlagsBits.SendMessages) !== 0n, true);
+  assert.equal((deny & PermissionFlagsBits.CreatePublicThreads) !== 0n, true);
+  assert.equal((deny & PermissionFlagsBits.CreatePrivateThreads) !== 0n, true);
+  assert.equal((deny & PermissionFlagsBits.SendMessagesInThreads) !== 0n, true);
 });

@@ -80,6 +80,14 @@ export const BOT_PERMISSIONS =
   PermissionFlagsBits.ManageRoles |
   PermissionFlagsBits.ManageMessages;
 
+/** Members may view these boards, not chat or spin up threads. */
+export const QUEUE_BOARD_DENY_PERMS = [
+  PermissionFlagsBits.SendMessages,
+  PermissionFlagsBits.CreatePublicThreads,
+  PermissionFlagsBits.CreatePrivateThreads,
+  PermissionFlagsBits.SendMessagesInThreads,
+] as const;
+
 export const SETUP_PERMISSIONS = [
   { name: "View Channel", bit: PermissionFlagsBits.ViewChannel },
   { name: "Send Messages", bit: PermissionFlagsBits.SendMessages },

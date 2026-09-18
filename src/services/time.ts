@@ -35,6 +35,21 @@ export function formatDuration(hours: number): string {
   return `${rounded} ${hours === 1 ? "hour" : "hours"}`;
 }
 
+export function formatElapsedCompact(from: string | Date, now: Date): string {
+  const start =
+    from instanceof Date ? from : DateTime.fromISO(from, { zone: "utc" }).toJSDate();
+  let ms = now.getTime() - start.getTime();
+  if (!Number.isFinite(ms) || ms < 0) ms = 0;
+  const totalMinutes = Math.floor(ms / 60_000);
+  if (totalMinutes < 1) return "<1m";
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+  if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  return `${minutes}m`;
+}
+
 export function formatCompactHours(hours: number | null | undefined): string {
   if (hours == null) return "—";
   const rounded = Number.isInteger(hours)

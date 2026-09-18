@@ -22,7 +22,7 @@ import {
   toggleAfk,
   pickReadyForJob,
 } from "../src/services/queue.js";
-import { formatDashboardEntry, formatDutyLineTable, formatJobList, formatQueuePanelLines, joinedEmbed, pickDiscordDisplayName } from "../src/ui/embeds.js";
+import { formatDashboardEntry, formatDutyLineTable, formatJobList, formatOnDutyBody, formatQueuePanelLines, joinedEmbed, pickDiscordDisplayName } from "../src/ui/embeds.js";
 import { dutyLineDashboardPayload } from "../src/ui/dashboard.js";
 import { userQueueButtons } from "../src/ui/components.js";
 import { personalStatusChannelName, isPersonalStatusChannelName, personalStatusOverwrites, statusCategoryOverwrites } from "../src/services/user-status-channel.js";
@@ -402,11 +402,11 @@ test("selecting every J.O. is labeled All jobs", () => {
   const line = listDutyLine(db, GUILD, NOW);
   assert.equal(formatJobList(line.rows[0]!.jobs, line.jobCount), "All jobs");
   const table = formatDutyLineTable(line, "Asia/Manila");
-  assert.match(table, /↳/);
+  assert.match(table, /∟/);
   assert.match(table, /PvP/);
 });
 
-test("dashboard queue rows match NAME STATUS HOURS with jobs on a ↳ line", () => {
+test("dashboard queue rows match NAME STATUS HOURS with jobs on a ∟ line", () => {
   const line = formatDashboardEntry(
     {
       entryId: "e1",
@@ -426,13 +426,15 @@ test("dashboard queue rows match NAME STATUS HOURS with jobs on a ↳ line", () 
     },
     "Asia/Manila",
     5,
+    new Date("2026-09-17T00:12:00.000Z"),
   );
   const [row, jobs] = line.split("\n");
-  assert.match(row ?? "", /^1  Alex /);
+  assert.match(row ?? "", /^1 Alex/);
   assert.match(row ?? "", /In line/);
   assert.match(row ?? "", /2\.5h/);
+  assert.match(row ?? "", /12m$/);
   assert.equal(row?.includes("ADDED"), false);
-  assert.match(jobs ?? "", /^    ↳ /);
+  assert.match(jobs ?? "", /^    ∟ /);
   assert.match(jobs ?? "", /PvP, Abyss, Exploration, Dungeon/);
 
   const table = formatDutyLineTable(
@@ -468,19 +470,21 @@ test("dashboard queue rows match NAME STATUS HOURS with jobs on a ↳ line", () 
       jobCount: 5,
     },
     "Asia/Manila",
+    new Date("2026-09-17T00:12:00.000Z"),
   );
-  assert.match(table, /^```\n#  NAME/);
+  assert.match(table, /^```\n# NAME/);
   assert.match(table, /STATUS/);
   assert.match(table, /HOURS/);
+  assert.match(table, /WAIT/);
   assert.equal(table.includes("ADDED"), false);
   assert.equal(table.includes("JOBS"), false);
   assert.match(table, /In line/);
   assert.match(table, /AFK/);
-  assert.match(table, /    ↳ Dungeon/);
-  assert.match(table, /    ↳ PvP/);
+  assert.match(table, /    ∟ Dungeon/);
+  assert.match(table, /    ∟ PvP/);
 });
 
-test("dashboard JOBS sit on a ↳ continuation line", () => {
+test("dashboard JOBS sit on a ∟ continuation line", () => {
   const leno = formatDashboardEntry(
     {
       entryId: "e1",
@@ -500,6 +504,7 @@ test("dashboard JOBS sit on a ↳ continuation line", () => {
     },
     "Asia/Manila",
     5,
+    NOW,
   );
   const vy = formatDashboardEntry(
     {
@@ -518,9 +523,10 @@ test("dashboard JOBS sit on a ↳ continuation line", () => {
     },
     "Asia/Manila",
     5,
+    NOW,
   );
-  assert.match(leno, /\n    ↳ PvP, Dungeon, Abyss, Pet Farm/);
-  assert.match(vy, /\n    ↳ Dungeon, Exploration/);
+  assert.match(leno, /\n    ∟ PvP, Dungeon, Abyss, Pet Farm/);
+  assert.match(vy, /\n    ∟ Dungeon, Exploration/);
   assert.equal(vy.includes("Leveling"), false);
 });
 
@@ -540,6 +546,7 @@ test("dashboard NAME stays filled when displayName is blank or decorative", () =
     },
     "Asia/Manila",
     5,
+    NOW,
   );
   const blank = formatDashboardEntry(
     {
@@ -555,6 +562,7 @@ test("dashboard NAME stays filled when displayName is blank or decorative", () =
     },
     "Asia/Manila",
     5,
+    NOW,
   );
   const fancy = formatDashboardEntry(
     {
@@ -570,6 +578,7 @@ test("dashboard NAME stays filled when displayName is blank or decorative", () =
     },
     "Asia/Manila",
     5,
+    NOW,
   );
   assert.equal(named.length, blank.length);
   assert.equal(named.length, fancy.length);
@@ -595,8 +604,54 @@ test("duty line card includes a live updated timestamp", () => {
   const json = JSON.stringify(payload.components[0]!.toJSON());
   assert.match(json, /Updated <t:\d+:R>/);
   assert.match(json, /\*\*QUEUE\*\*/);
-  assert.match(json, /\*\*ON DUTY\*\*/);
-  assert.match(json, /NAME {2,}LOCATION {2,}SINCE/);
+  assert.match(json, /\*\*On duty\*\*/);
+  assert.match(json, /_No one on duty\._/);
+  assert.match(json, /WAIT/);
+});
+
+test("on-duty block is a bulleted mention and job list", () => {
+  const body = formatOnDutyBody(
+    {
+      rows: [],
+      inLine: 0,
+      afkCount: 0,
+      onDutyCount: 2,
+      onDuty: [
+        {
+          entryId: "e1",
+          userId: "111",
+          displayName: "Benjo",
+          position: 1,
+          status: "on_duty",
+          jobs: [{ id: "q1", slug: "exploration-leveling", name: "Exploration/Leveling", emoji: "🧭" }],
+          durationHours: 2,
+          availableFrom: "2026-09-17T00:00:00.000Z",
+          availableUntil: null,
+          updatedAt: "2026-09-17T00:00:00.000Z",
+        },
+        {
+          entryId: "e2",
+          userId: "222",
+          displayName: "U3a3ef",
+          position: 2,
+          status: "on_duty",
+          jobs: [{ id: "q1", slug: "exploration-leveling", name: "Exploration/Leveling", emoji: "🧭" }],
+          durationHours: 2,
+          availableFrom: "2026-09-17T00:00:00.000Z",
+          availableUntil: null,
+          updatedAt: "2026-09-17T00:00:00.000Z",
+        },
+      ],
+      jobCount: 5,
+    },
+    "Asia/Manila",
+    new Date("2026-09-17T00:14:00.000Z"),
+  );
+  assert.equal(
+    body,
+    "- <@111> · Exploration/Leveling · 14m\n- <@222> · Exploration/Leveling · 14m",
+  );
+  assert.equal(body.includes("ON DUTY"), false);
 });
 
 test("missing job rows still show the entry's J.O. name", () => {
@@ -615,7 +670,7 @@ test("missing job rows still show the entry's J.O. name", () => {
   assert.equal(formatJobList(line.rows[0]!.jobs, line.jobCount), "Abyss");
   const table = formatDutyLineTable(line, "Asia/Manila");
   assert.match(table, /Abyss/);
-  assert.match(table, /    ↳ Abyss/);
+  assert.match(table, /    ∟ Abyss/);
   const body = table.slice(4).replace(/\n```[\s\S]*$/, "");
   const row = body.split("\n")[1] ?? "";
   assert.equal(row.includes("—"), false);

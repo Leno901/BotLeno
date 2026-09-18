@@ -32,7 +32,7 @@ export function dutyLineDashboardPayload(
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `**QUEUE**\n${formatDutyLineTable(line, timezone)}`,
+        `**QUEUE**\n${formatDutyLineTable(line, timezone, updatedAt)}`,
       ),
     )
     .addSeparatorComponents(
@@ -40,7 +40,7 @@ export function dutyLineDashboardPayload(
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `**ON DUTY**\n${formatOnDutyBody(line, timezone)}`,
+        `**On duty**\n${formatOnDutyBody(line, timezone, updatedAt)}`,
       ),
     )
     .addTextDisplayComponents(

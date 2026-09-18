@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   calculateAvailableUntil,
   formatDuration,
+  formatElapsedCompact,
   formatInTimeZone,
   formatShortDate,
   formatTableDate,
@@ -28,6 +29,16 @@ test("formats availability in the guild timezone, not the host timezone", () => 
 test("rejects unknown timezones", () => {
   assert.equal(isValidTimeZone("Asia/Manila"), true);
   assert.equal(isValidTimeZone("Not/AZone"), false);
+});
+
+test("formats compact elapsed wait times", () => {
+  const now = new Date("2026-09-17T12:00:00.000Z");
+  assert.equal(formatElapsedCompact("2026-09-17T11:59:30.000Z", now), "<1m");
+  assert.equal(formatElapsedCompact("2026-09-17T11:48:00.000Z", now), "12m");
+  assert.equal(formatElapsedCompact("2026-09-17T10:00:00.000Z", now), "2h");
+  assert.equal(formatElapsedCompact("2026-09-17T09:40:00.000Z", now), "2h 20m");
+  assert.equal(formatElapsedCompact("2026-09-15T12:00:00.000Z", now), "2d");
+  assert.equal(formatElapsedCompact("2026-09-15T10:00:00.000Z", now), "2d 2h");
 });
 
 test("formats hour labels", () => {

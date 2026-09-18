@@ -17,8 +17,8 @@ import type {
   UserQueueView,
 } from "../types.js";
 import {
-  formatClock,
   formatDuration,
+  formatElapsedCompact,
   formatInTimeZone,
 } from "../services/time.js";
 
@@ -72,6 +72,8 @@ export function dutyStatusBadge(status: DutyStatus): string {
 const NBSP = "\u00a0";
 const NAME_WIDTH = 10;
 const STATUS_WIDTH = 9;
+const HOURS_WIDTH = 6;
+const WAIT_WIDTH = 7;
 
 function lineStatusText(status: DutyStatus): string {
   if (status === "on_duty") return "On duty";
@@ -80,8 +82,12 @@ function lineStatusText(status: DutyStatus): string {
 }
 
 function formatHoursSample(hours: number | null): string {
-  if (hours == null) return `${"-".padStart(5)} `;
-  return `${hours.toFixed(1).padStart(5)}h`;
+  if (hours == null) return "-".padStart(HOURS_WIDTH);
+  return `${hours.toFixed(1)}h`.padStart(HOURS_WIDTH);
+}
+
+function formatWaitSample(from: string | Date, now: Date): string {
+  return formatElapsedCompact(from, now).padStart(WAIT_WIDTH);
 }
 
 function jobShortName(job: { name: string }): string {
@@ -92,14 +98,12 @@ function jobShortName(job: { name: string }): string {
 
 function jobArrowLine(
   jobs: Array<{ name: string }>,
-  totalJobCount: number,
+  numWidth: number,
 ): string {
-  if (jobs.length === 0) return "    ↳ -";
+  const jobIndent = " ".repeat(numWidth + 2);
+  if (jobs.length === 0) return `${jobIndent}∟ -`;
   const names = jobs.map(jobShortName).filter(Boolean);
-  if (totalJobCount > 0 && names.length >= totalJobCount) {
-    return `    ↳ ${names.join(", ")}`;
-  }
-  return `    ↳ ${names.join(", ") || "-"}`;
+  return `${jobIndent}∟ ${names.join(", ") || "-"}`;
 }
 
 export function padMono(value: string, width: number): string {
@@ -171,7 +175,7 @@ export function dutyDisplayName(entry: {
 }
 
 export function formatDutyLineHeader(): string {
-  return `${"#".padEnd(2)} ${"NAME".padEnd(NAME_WIDTH)} ${"STATUS".padEnd(STATUS_WIDTH)} HOURS`;
+  return `${"#".padEnd(2)}${"NAME".padEnd(NAME_WIDTH)}${"STATUS".padEnd(STATUS_WIDTH)}${"HOURS".padEnd(HOURS_WIDTH)}${"WAIT".padStart(WAIT_WIDTH)}`;
 }
 
 export function formatJobList(
@@ -259,21 +263,27 @@ export function queuePanelEmbed(queues: QueueWithCount[]): EmbedBuilder {
 export function formatDashboardEntry(
   entry: DutyLineRow,
   _timezone: string,
-  totalJobCount: number,
+  _totalJobCount: number,
+  now = new Date(),
 ): string {
-  const slot = String(entry.position).padEnd(2);
+  const num = String(entry.position).padEnd(2);
   const name = tableCell(dutyDisplayName(entry), NAME_WIDTH);
   const status = tableCell(lineStatusText(entry.status), STATUS_WIDTH);
   const hours = formatHoursSample(entry.durationHours);
-  const row = `${slot} ${name} ${status} ${hours}`;
-  return `${row}\n${jobArrowLine(entry.jobs, totalJobCount)}`;
+  const wait = formatWaitSample(entry.availableFrom, now);
+  const row = `${num}${name}${status}${hours}${wait}`;
+  return `${row}\n${jobArrowLine(entry.jobs, num.length)}`;
 }
 
 function wrapDutyTable(body: string): string {
   return `\`\`\`\n${body}\n\`\`\``;
 }
 
-export function formatDutyLineTable(line: DutyLine, timezone: string): string {
+export function formatDutyLineTable(
+  line: DutyLine,
+  timezone: string,
+  now = new Date(),
+): string {
   const visible = line.rows.slice(0, 12);
   const header = formatDutyLineHeader();
   if (visible.length === 0) {
@@ -281,28 +291,32 @@ export function formatDutyLineTable(line: DutyLine, timezone: string): string {
   }
 
   const rows = visible
-    .map((entry) => formatDashboardEntry(entry, timezone, line.jobCount))
+    .map((entry) => formatDashboardEntry(entry, timezone, line.jobCount, now))
     .join("\n");
   const extra =
     line.rows.length > 12 ? `\n_+${line.rows.length - 12} more_` : "";
   return `${wrapDutyTable(`${header}\n${rows}`)}${extra}`;
 }
 
-export function formatOnDutyBody(line: DutyLine, timezone: string): string {
-  const header = `${"NAME".padEnd(12)} ${"LOCATION".padEnd(12)} SINCE`;
+function onDutyJobLabel(row: DutyLineRow): string {
+  const names = row.jobs.map((job) => asciiText(job.name) || job.name).filter(Boolean);
+  return names.join(", ") || "-";
+}
+
+export function formatOnDutyBody(
+  line: DutyLine,
+  _timezone: string,
+  now = new Date(),
+): string {
   if (line.onDuty.length === 0) {
-    return wrapDutyTable(`${header}\n_No one on duty._`);
+    return "_No one on duty._";
   }
-  const rows = line.onDuty.map((row) => {
-    const name = tableCell(`@${dutyDisplayName(row)}`, 12);
-    const location = tableCell(
-      jobShortName(row.jobs[0] ?? { name: "-" }),
-      12,
-    );
-    const since = formatClock(row.updatedAt ?? row.availableFrom, timezone);
-    return `${name} ${location} ${since}`;
-  });
-  return wrapDutyTable(`${header}\n${rows.join("\n")}`);
+  return line.onDuty
+    .map((row) => {
+      const since = row.updatedAt ?? row.availableFrom;
+      return `- <@${row.userId}> · ${onDutyJobLabel(row)} · ${formatElapsedCompact(since, now)}`;
+    })
+    .join("\n");
 }
 
 export function availabilityFields(

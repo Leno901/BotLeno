@@ -402,6 +402,10 @@ async function closeOfferMessage(
     const channel = await ctx.client.channels.fetch(ref.channelId);
     if (!channel || !channel.isTextBased()) return;
     const message = await channel.messages.fetch(ref.messageId);
+    if (ref.via === "dm") {
+      await message.edit({ components: [] }).catch(() => undefined);
+      return;
+    }
     await message.delete().catch(() => undefined);
   } catch {
     // Offer message may already be gone.

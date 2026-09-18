@@ -1,5 +1,6 @@
 import { ChannelType, MessageFlags, type Guild, type TextChannel } from "discord.js";
 import type { AppContext } from "../app-context.js";
+import { discordErrorCode } from "../app-context.js";
 import {
   DEFAULT_PANEL_CHANNEL,
   DEFAULT_STATUS_CHANNEL,
@@ -73,6 +74,26 @@ async function resolveQueueStartChannel(
   return byName?.type === ChannelType.GuildText ? byName : null;
 }
 
+async function grantBotPostAccess(channel: TextChannel): Promise<void> {
+  const bot = channel.guild.members.me ?? (await channel.guild.members.fetchMe());
+  const botRole = bot.roles.botRole ?? bot.roles.highest;
+  await channel.permissionOverwrites.edit(botRole, {
+    ViewChannel: true,
+    SendMessages: true,
+    EmbedLinks: true,
+    ReadMessageHistory: true,
+    ManageMessages: true,
+  });
+}
+
+function panelPostError(channel: TextChannel): AppError {
+  return new AppError(
+    `The bot cannot post in ${channel}. Give the **bot role** View Channel, Send Messages, Embed Links, and Read Message History in that channel, then run \`/queue-admin refresh\` again.`,
+    "PANEL_FORBIDDEN",
+    "error",
+  );
+}
+
 export async function upsertQueueStartPanel(
   ctx: AppContext,
   guild: Guild,
@@ -111,9 +132,26 @@ export async function upsertQueueStartPanel(
     !options.force &&
     !shouldRepostPanel(existing!.id, channel.lastMessageId);
 
-  const message = reuse
-    ? await withTransientRetry(() => existing!.edit(payload))
-    : await withTransientRetry(() => channel.send(payload));
+  const post = () =>
+    reuse
+      ? withTransientRetry(() => existing!.edit(payload))
+      : withTransientRetry(() => channel.send(payload));
+
+  let message;
+  try {
+    message = await post();
+  } catch (error) {
+    const code = discordErrorCode(error);
+    if (code !== 50001 && code !== 50013) {
+      throw error instanceof AppError ? error : panelPostError(channel);
+    }
+    try {
+      await grantBotPostAccess(channel);
+      message = await post();
+    } catch {
+      throw panelPostError(channel);
+    }
+  }
   await message.pin().catch(() => undefined);
   store.updateGuild(ctx.db, guild.id, { panelMessageId: message.id });
   if (!reuse && existing) {

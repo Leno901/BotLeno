@@ -339,7 +339,7 @@ export async function runSetup(
         parent: category.id,
         topic: "Join a BotLenoAPP job queue",
         reason: "BotLenoAPP setup",
-        permissionOverwrites: panelOverwrites(guild, botRole, staffRole),
+        permissionOverwrites: panelOverwrites(guild, botRole, staffRole, botMember),
       });
       ids.panel = created.id;
     }
@@ -351,7 +351,7 @@ export async function runSetup(
         parent: category.id,
         topic: "Live J.O. dashboard",
         reason: "BotLenoAPP setup",
-        permissionOverwrites: statusOverwrites(guild, botRole, staffRole),
+        permissionOverwrites: statusOverwrites(guild, botRole, staffRole, botMember),
       });
       ids.status = created.id;
     }
@@ -383,12 +383,12 @@ export async function runSetup(
     await repairChannelPerms(
       guild,
       ids.panel!,
-      panelOverwrites(guild, botRole, staffRole),
+      panelOverwrites(guild, botRole, staffRole, botMember),
     );
     await repairChannelPerms(
       guild,
       ids.status!,
-      statusOverwrites(guild, botRole, staffRole),
+      statusOverwrites(guild, botRole, staffRole, botMember),
     );
     await repairChannelPerms(
       guild,
@@ -570,12 +570,22 @@ function label(key: SetupResourceKey): string {
   }
 }
 
-function panelOverwrites(guild: Guild, botRole: Role, staffRole: Role): OverwriteResolvable[] {
+function bitsBotCanOverwrite(bot: GuildMember, bits: readonly bigint[]): bigint[] {
+  if (bot.permissions.has(PermissionFlagsBits.Administrator)) return [...bits];
+  return bits.filter((bit) => bot.permissions.has(bit));
+}
+
+function panelOverwrites(
+  guild: Guild,
+  botRole: Role,
+  staffRole: Role,
+  bot: GuildMember,
+): OverwriteResolvable[] {
   return [
     {
       id: guild.id,
       allow: [TEXT_PERMS.view, TEXT_PERMS.history],
-      deny: [...QUEUE_BOARD_DENY_PERMS],
+      deny: bitsBotCanOverwrite(bot, QUEUE_BOARD_DENY_PERMS),
     },
     {
       id: botRole.id,
@@ -586,18 +596,22 @@ function panelOverwrites(guild: Guild, botRole: Role, staffRole: Role): Overwrit
         TEXT_PERMS.history,
         TEXT_PERMS.manageMessages,
       ],
-      deny: [...NO_THREADS],
     },
     {
       id: staffRole.id,
       allow: [TEXT_PERMS.view, TEXT_PERMS.history, TEXT_PERMS.send],
-      deny: [...NO_THREADS],
+      deny: bitsBotCanOverwrite(bot, NO_THREADS),
     },
   ];
 }
 
-function statusOverwrites(guild: Guild, botRole: Role, staffRole: Role): OverwriteResolvable[] {
-  return panelOverwrites(guild, botRole, staffRole);
+function statusOverwrites(
+  guild: Guild,
+  botRole: Role,
+  staffRole: Role,
+  bot: GuildMember,
+): OverwriteResolvable[] {
+  return panelOverwrites(guild, botRole, staffRole, bot);
 }
 
 function adminOverwrites(guild: Guild, botRole: Role, staffRole: Role): OverwriteResolvable[] {
@@ -658,7 +672,22 @@ async function repairChannelPerms(
 ): Promise<void> {
   const channel = await fetchText(guild, channelId);
   if (!channel) return;
-  await channel.permissionOverwrites.set(overwrites, "BotLenoAPP setup repair");
+  try {
+    await channel.permissionOverwrites.set(overwrites, "BotLenoAPP setup repair");
+  } catch {
+    const bot = guild.members.me;
+    const botRole = bot?.roles.botRole ?? bot?.roles.highest;
+    if (!botRole) return;
+    await channel.permissionOverwrites
+      .edit(botRole, {
+        ViewChannel: true,
+        SendMessages: true,
+        EmbedLinks: true,
+        ReadMessageHistory: true,
+        ManageMessages: true,
+      })
+      .catch(() => undefined);
+  }
 }
 
 export function requireGuildManager(member: GuildMember): void {

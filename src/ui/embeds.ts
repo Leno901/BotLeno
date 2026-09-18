@@ -69,8 +69,12 @@ export function dutyStatusBadge(status: DutyStatus): string {
   return `${dutyStatusDot(status)} ${dutyStatusText(status)}`;
 }
 
-const NBSP = "\u00a0";
-const DUTY_STATUS_LEGEND = "-# 🟢 in line · 🟡 AFK · 🔴 on duty";
+const DUTY_STATUS_LEGEND = smallLines([
+  "---------",
+  "🟢 in line",
+  "🟡 AFK",
+  "🔴 on duty",
+]);
 const QUEUE_CARD_LIMIT = 8;
 const QUEUE_TEXT_LIMIT = 3500;
 
@@ -102,12 +106,6 @@ function smallLines(lines: readonly string[]): string {
 
 function hoursLabel(hours: number | null): string {
   return hours == null ? "-" : `${hours.toFixed(1)}h`;
-}
-
-export function padMono(value: string, width: number): string {
-  const clipped =
-    value.length > width ? `${value.slice(0, Math.max(1, width - 1))}.` : value;
-  return `\`${clipped.padEnd(width, NBSP)}\``;
 }
 
 const ZERO_WIDTH = /[\u200B-\u200D\uFEFF\u2060]/g;
@@ -171,7 +169,7 @@ export function formatJobList(
 export function brandEmbed(): EmbedBuilder {
   return new EmbedBuilder()
     .setColor(BRAND_COLOR)
-    .setFooter({ text: "BotLenoAPP • Queue Management" });
+    .setFooter({ text: "LenQ • Queue Management" });
 }
 
 export function successEmbed(title: string, description?: string): EmbedBuilder {
@@ -198,45 +196,55 @@ export function infoEmbed(title: string, description?: string): EmbedBuilder {
   return embed;
 }
 
-export function formatQueuePanelLine(
-  queue: QueueWithCount,
-  nameWidth: number,
-  waitingWidth: number,
+const JOB_COL = 16;
+const WAITING_COL = 7;
+const STATUS_COL = 6;
+
+function clipJobName(name: string, width: number): string {
+  const short = jobShortName({ name }) || asciiText(name) || name;
+  if (short.length <= width) return short;
+  return `${short.slice(0, Math.max(1, width - 1))}.`;
+}
+
+export function formatJobTable(
+  jobs: Array<{ name: string; waiting: number; status: string }>,
 ): string {
-  return [
-    queue.emoji,
-    padMono(queue.name, nameWidth),
-    padMono(`${queue.waitingCount} waiting`, waitingWidth),
-    `${queueStatusIcon(queue.status)} ${queueStatusLabel(queue.status)}`,
-  ].join("  ");
+  const header = `${"JOB".padEnd(JOB_COL)} ${"WAITING".padEnd(WAITING_COL)} ${"STATUS".padEnd(STATUS_COL)}`;
+  const rows =
+    jobs.length === 0
+      ? ["No jobs configured."]
+      : jobs.map((job) => {
+          const name = clipJobName(job.name, JOB_COL).padEnd(JOB_COL);
+          const waiting = String(job.waiting).padEnd(WAITING_COL);
+          const status = queueStatusLabel(
+            job.status === "paused" || job.status === "closed" ? job.status : "open",
+          ).padEnd(STATUS_COL);
+          return `${name} ${waiting} ${status}`;
+        });
+  return `\`\`\`\n${header}\n${rows.join("\n")}\n\`\`\``;
 }
 
 export function formatQueuePanelLines(queues: QueueWithCount[]): string {
-  if (queues.length === 0) return "_No job orders configured._";
-  const nameWidth = Math.min(
-    22,
-    Math.max(12, ...queues.map((queue) => queue.name.length)),
+  return formatJobTable(
+    queues.map((queue) => ({
+      name: queue.name,
+      waiting: queue.waitingCount,
+      status: queue.status,
+    })),
   );
-  const waitingWidth = Math.max(
-    9,
-    ...queues.map((queue) => `${queue.waitingCount} waiting`.length),
-  );
-  return queues
-    .map((queue) => formatQueuePanelLine(queue, nameWidth, waitingWidth))
-    .join("\n");
 }
 
 export function queuePanelEmbed(queues: QueueWithCount[]): EmbedBuilder {
   return brandEmbed()
-    .setTitle("🎯 BOTLENO QUEUE")
+    .setTitle("Job orders")
     .setDescription(
       [
-        "Choose one or more job orders below.",
+        "Select one or more job orders to join a queue.",
         "",
-        "**Available J.O.**",
+        "**AVAILABLE**",
         formatQueuePanelLines(queues),
         "",
-        "You can select multiple J.O.s.",
+        "-# You can select multiple job orders.",
       ].join("\n"),
     );
 }
@@ -260,8 +268,8 @@ function assembleQueueCards(cards: string[], hidden: number): string {
   if (cards.length === 0) {
     return `${smallLines(["_Nobody is in the duty line._"])}\n${DUTY_STATUS_LEGEND}`;
   }
-  const extra = hidden > 0 ? `\n-# +${hidden} more in line` : "";
-  return `${cards.join("\n-#\n")}${extra}\n${DUTY_STATUS_LEGEND}`;
+  const extra = hidden > 0 ? `\n${smallLines([`+${hidden} more in line`])}` : "";
+  return `${cards.join(`\n${smallLines(["---------"])}\n`)}${extra}\n${DUTY_STATUS_LEGEND}`;
 }
 
 export function formatDutyLineTable(
@@ -353,7 +361,7 @@ export function joinedEmbed(
         timezone,
       ),
     )
-    .setFooter({ text: "BotLenoAPP • Queue Management" });
+    .setFooter({ text: "LenQ • Queue Management" });
   if (PERSONAL_STATUS_CHANNELS_ENABLED && statusChannelId) {
     embed.addFields({
       name: "Your status",

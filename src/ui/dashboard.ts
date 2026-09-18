@@ -24,7 +24,8 @@ export function dutyLineDashboardPayload(
         [
           `## ${sansItalic("DUTY LINE")}`,
           `🟢 **${sansItalic("LIVE")}**`,
-          `${line.inLine} in line • ${line.afkCount} AFK • ${line.onDutyCount} on duty • Updated ${discordTimestamp(updatedAt, "R")}`,
+          `${line.inLine} in line • ${line.afkCount} AFK • ${line.onDutyCount} on duty`,
+          `Updated ${discordTimestamp(updatedAt, "R")}`,
         ].join("\n"),
       ),
     )
@@ -46,7 +47,7 @@ export function dutyLineDashboardPayload(
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# ${sansItalic("BotLenoAPP")} • ${sansItalic("Queue Management")} · ${formatClock(updatedAt, timezone)}`,
+        `-# ${sansItalic("LenQ")} • ${sansItalic("Queue Management")} · ${formatClock(updatedAt, timezone)}`,
       ),
     );
 

@@ -22,7 +22,7 @@ import {
   toggleAfk,
   pickReadyForJob,
 } from "../src/services/queue.js";
-import { formatDashboardEntry, formatDutyLineTable, formatJobList, formatOnDutyBody, formatQueuePanelLines, joinedEmbed, pickDiscordDisplayName } from "../src/ui/embeds.js";
+import { formatDashboardEntry, formatDutyLineTable, formatJobList, formatJobTable, formatOnDutyBody, formatQueuePanelLines, joinedEmbed, pickDiscordDisplayName, queuePanelEmbed } from "../src/ui/embeds.js";
 import { dutyLineDashboardPayload } from "../src/ui/dashboard.js";
 import { sansItalic } from "../src/ui/text-style.js";
 import { userQueueButtons } from "../src/ui/components.js";
@@ -481,9 +481,13 @@ test("dashboard queue rows are stacked cards with small text", () => {
   assert.match(table, /-#   Jobs: Dungeon/);
   assert.match(table, /-#   Hours: 2\.5h · Wait: 12m/);
   assert.match(table, /-#   Hours: 0\.8h · Wait: 12m/);
-  assert.match(table, /-# 🟢 in line · 🟡 AFK · 🔴 on duty/);
+  assert.match(table, /-# ---------/);
+  assert.match(table, /-# 🟢 in line/);
+  assert.match(table, /-# 🟡 AFK/);
+  assert.match(table, /-# 🔴 on duty/);
   assert.equal(table.includes("```"), false);
   assert.equal(table.includes("ADDED"), false);
+  assert.equal(/\n-#\n/.test(table), false);
 });
 
 test("dashboard queue shows eight cards then a leftover count", () => {
@@ -638,7 +642,9 @@ test("duty line card includes a live updated timestamp", () => {
   assert.match(json, new RegExp(`\\*\\*${sansItalic("On duty")}\\*\\*`));
   assert.match(json, new RegExp(sansItalic("DUTY LINE")));
   assert.match(json, new RegExp(sansItalic("LIVE")));
-  assert.match(json, new RegExp(sansItalic("BotLenoAPP")));
+  assert.match(json, new RegExp(sansItalic("LenQ")));
+  assert.equal(json.includes("BotLenoAPP"), false);
+  assert.match(json, /in line • 0 AFK • 0 on duty\\nUpdated <t:\d+:R>/);
   assert.match(json, /_Nobody is in the duty line\._/);
   assert.match(json, /_No one on duty\._/);
   assert.match(json, /🟢 in line/);
@@ -771,8 +777,32 @@ test("AFK and dispatch update duty-line status", () => {
   );
 });
 
-test("available J.O. lines pad names and waiting counts", () => {
-  const text = formatQueuePanelLines([
+test("queue-start job table is a padded code block without emoji", () => {
+  const text = formatJobTable([
+    { name: "PvP", waiting: 0, status: "open" },
+    { name: "Exploration/Leveling", waiting: 1, status: "open" },
+    { name: "Dungeon", waiting: 2, status: "closed" },
+  ]);
+  assert.match(text, /^```\nJOB/);
+  assert.match(text, /WAITING/);
+  assert.match(text, /STATUS/);
+  assert.match(text, /PvP/);
+  assert.match(text, /Exploration/);
+  assert.equal(text.includes("Leveling"), false);
+  assert.equal(text.includes("🟢"), false);
+  assert.equal(text.includes("⚔️"), false);
+  assert.match(text, /Open/);
+  assert.match(text, /Closed/);
+  const rows = text.replace(/```/g, "").trim().split("\n");
+  for (const row of rows) {
+    assert.ok(row.length <= 32, row);
+  }
+  const pvp = rows.find((row) => row.startsWith("PvP"));
+  const header = rows[0];
+  assert.equal(pvp?.indexOf("0"), header?.indexOf("WAITING"));
+  assert.equal(pvp?.indexOf("Open"), header?.indexOf("STATUS"));
+
+  const panel = formatQueuePanelLines([
     {
       id: "1",
       guildId: GUILD,
@@ -810,12 +840,17 @@ test("available J.O. lines pad names and waiting counts", () => {
       waitingCount: 1,
     },
   ]);
-  const [pvp, explore] = text.split("\n");
-  assert.match(pvp ?? "", /`PvP/);
-  assert.match(explore ?? "", /`Exploration\/Leveling/);
-  assert.match(pvp ?? "", /0 waiting/);
-  assert.match(explore ?? "", /1 waiting/);
-  assert.match(pvp ?? "", /🟢 Open/);
+  assert.equal(panel, formatJobTable([
+    { name: "PvP", waiting: 0, status: "open" },
+    { name: "Exploration/Leveling", waiting: 1, status: "open" },
+  ]));
+
+  const embed = queuePanelEmbed([]);
+  assert.equal(embed.data.title, "Job orders");
+  assert.match(embed.data.description ?? "", /Select one or more job orders to join a queue\./);
+  assert.match(embed.data.description ?? "", /\*\*AVAILABLE\*\*/);
+  assert.match(embed.data.description ?? "", /-# You can select multiple job orders\./);
+  assert.equal(embed.data.footer?.text, "LenQ • Queue Management");
 });
 
 test("personal status channel names stay discord-safe and unique", () => {

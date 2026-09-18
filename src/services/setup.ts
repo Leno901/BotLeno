@@ -17,6 +17,7 @@ import {
   DEFAULT_STAFF_ROLE_NAME,
   DEFAULT_STATUS_CATEGORY_NAME,
   DEFAULT_STATUS_CHANNEL,
+  LEGACY_CATEGORY_NAME,
   LEGACY_PANEL_CHANNEL,
   LEGACY_STATUS_CHANNEL,
   PERSONAL_STATUS_CHANNELS_ENABLED,
@@ -111,6 +112,13 @@ function findTextByName(
   return match?.type === ChannelType.GuildText ? match : null;
 }
 
+function findCategoryByName(guild: Guild, name: string): CategoryChannel | null {
+  const match = guild.channels.cache.find(
+    (channel) => channel.type === ChannelType.GuildCategory && channel.name === name,
+  );
+  return match?.type === ChannelType.GuildCategory ? match : null;
+}
+
 export async function runSetup(
   interaction: ChatInputCommandInteraction,
   ctx: AppContext,
@@ -175,12 +183,8 @@ export async function runSetup(
   const categoryById = await fetchCategory(guild, guildConfig.categoryId);
   const categoryByName =
     categoryById ??
-    (guild.channels.cache.find(
-      (channel) =>
-        channel.type === ChannelType.GuildCategory &&
-        channel.name === DEFAULT_CATEGORY_NAME,
-    ) as CategoryChannel | undefined) ??
-    null;
+    findCategoryByName(guild, DEFAULT_CATEGORY_NAME) ??
+    findCategoryByName(guild, LEGACY_CATEGORY_NAME);
 
   const staffById = await fetchRole(guild, guildConfig.staffRoleId);
   const staffByName =
@@ -309,7 +313,11 @@ export async function runSetup(
 
     const category = await guild.channels.fetch(ids.category);
     if (!category || category.type !== ChannelType.GuildCategory) {
-      throw new AppError("Failed to resolve the BotLenoAPP category.", "SETUP_FAILED", "error");
+      throw new AppError("Failed to resolve the LenQ category.", "SETUP_FAILED", "error");
+    }
+
+    if (category.name === LEGACY_CATEGORY_NAME) {
+      await category.setName(DEFAULT_CATEGORY_NAME, "LenQ category rename").catch(() => undefined);
     }
 
     const botRole = botMember.roles.botRole ?? botMember.roles.highest;

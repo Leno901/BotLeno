@@ -5,7 +5,8 @@ export const APP_NAME = "BotLenoAPP";
 export const DEFAULT_TIMEZONE = "Asia/Manila";
 export const ABSOLUTE_MAX_HOURS = 24;
 export const DEFAULT_MIN_HOURS = 0.5;
-export const DEFAULT_CATEGORY_NAME = "BotLenoAPP";
+export const DEFAULT_CATEGORY_NAME = "LenQ";
+export const LEGACY_CATEGORY_NAME = "BotLenoAPP";
 export const DEFAULT_STATUS_CATEGORY_NAME = "queue-status";
 /** Flip to true to restore per-user private queue-status channels. */
 export const PERSONAL_STATUS_CHANNELS_ENABLED: boolean = false;

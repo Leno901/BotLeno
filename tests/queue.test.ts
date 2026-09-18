@@ -403,11 +403,11 @@ test("selecting every J.O. is labeled All jobs", () => {
   const line = listDutyLine(db, GUILD, NOW);
   assert.equal(formatJobList(line.rows[0]!.jobs, line.jobCount), "All jobs");
   const table = formatDutyLineTable(line, "Asia/Manila");
-  assert.match(table, /∟/);
-  assert.match(table, /PvP/);
+  assert.match(table, /Jobs: All jobs/);
+  assert.equal(table.includes("PvP"), false);
 });
 
-test("dashboard queue rows match NAME STATUS HOURS with jobs on a ∟ line", () => {
+test("dashboard queue rows are stacked cards with small text", () => {
   const line = formatDashboardEntry(
     {
       entryId: "e1",
@@ -429,15 +429,15 @@ test("dashboard queue rows match NAME STATUS HOURS with jobs on a ∟ line", () 
     5,
     new Date("2026-09-17T00:12:00.000Z"),
   );
-  const [row, jobs] = line.split("\n");
-  assert.match(row ?? "", /^1 Alex/);
-  assert.match(row ?? "", /🟢/);
-  assert.match(row ?? "", /2\.5h/);
-  assert.match(row ?? "", /12m/);
-  assert.match(row ?? "", /12m 🟢/);
-  assert.equal(row?.includes("ADDED"), false);
-  assert.match(jobs ?? "", /^    ∟ /);
-  assert.match(jobs ?? "", /PvP, Abyss, Exploration, Dungeon/);
+  assert.equal(
+    line,
+    [
+      "-# 1 Alex",
+      "-#   Status: 🟢 In line",
+      "-#   Jobs: PvP, Abyss, Exploration, Dungeon",
+      "-#   Hours: 2.5h · Wait: 12m",
+    ].join("\n"),
+  );
 
   const table = formatDutyLineTable(
     {
@@ -474,20 +474,48 @@ test("dashboard queue rows match NAME STATUS HOURS with jobs on a ∟ line", () 
     "Asia/Manila",
     new Date("2026-09-17T00:12:00.000Z"),
   );
-  assert.match(table, /^```\n# NAME/);
-  assert.match(table, /STATUS/);
-  assert.match(table, /HOURS/);
-  assert.match(table, /WAIT/);
-  assert.equal(table.includes("ADDED"), false);
-  assert.equal(table.includes("JOBS"), false);
-  assert.match(table, /🟢/);
-  assert.match(table, /🟡/);
+  assert.match(table, /^-# 1 Alex/m);
+  assert.match(table, /-#   Status: 🟢 In line/);
+  assert.match(table, /-#   Status: 🟡 AFK/);
+  assert.match(table, /-#   Jobs: PvP/);
+  assert.match(table, /-#   Jobs: Dungeon/);
+  assert.match(table, /-#   Hours: 2\.5h · Wait: 12m/);
+  assert.match(table, /-#   Hours: 0\.8h · Wait: 12m/);
   assert.match(table, /-# 🟢 in line · 🟡 AFK · 🔴 on duty/);
-  assert.match(table, /    ∟ Dungeon/);
-  assert.match(table, /    ∟ PvP/);
+  assert.equal(table.includes("```"), false);
+  assert.equal(table.includes("ADDED"), false);
 });
 
-test("dashboard JOBS sit on a ∟ continuation line", () => {
+test("dashboard queue shows eight cards then a leftover count", () => {
+  const rows = Array.from({ length: 10 }, (_, index) => ({
+    entryId: `e${index + 1}`,
+    userId: `user-${index + 1}`,
+    displayName: `User${index + 1}`,
+    position: index + 1,
+    status: "ready" as const,
+    jobs: [{ id: "q1", slug: "pvp", name: "PvP", emoji: "⚔️" }],
+    durationHours: 2,
+    availableFrom: "2026-09-17T00:00:00.000Z",
+    availableUntil: null,
+  }));
+  const table = formatDutyLineTable(
+    {
+      rows,
+      inLine: 10,
+      afkCount: 0,
+      onDutyCount: 0,
+      onDuty: [],
+      jobCount: 5,
+    },
+    "Asia/Manila",
+    NOW,
+  );
+  assert.match(table, /-# 8 User8/);
+  assert.equal(table.includes("User9"), false);
+  assert.match(table, /-# \+2 more in line/);
+});
+
+test("dashboard JOBS sit on a Jobs line", () => {
   const leno = formatDashboardEntry(
     {
       entryId: "e1",
@@ -528,8 +556,9 @@ test("dashboard JOBS sit on a ∟ continuation line", () => {
     5,
     NOW,
   );
-  assert.match(leno, /\n    ∟ PvP, Dungeon, Abyss, Pet Farm/);
-  assert.match(vy, /\n    ∟ Dungeon, Exploration/);
+  assert.match(leno, /-#   Jobs: PvP, Dungeon, Abyss, Pet Farm/);
+  assert.match(vy, /-#   Jobs: Dungeon, Exploration/);
+  assert.match(vy, /-#   Hours: - · Wait: <1m/);
   assert.equal(vy.includes("Leveling"), false);
 });
 
@@ -583,8 +612,7 @@ test("dashboard NAME stays filled when displayName is blank or decorative", () =
     5,
     NOW,
   );
-  assert.equal(named.length, blank.length);
-  assert.equal(named.length, fancy.length);
+  assert.match(named, /-# 1 LENO/);
   assert.match(blank, /5678/);
   assert.match(fancy, /LENO/);
   assert.equal(pickDiscordDisplayName({ displayName: "\u200B", username: "Vy", userId: "1" }), "Vy");
@@ -611,9 +639,9 @@ test("duty line card includes a live updated timestamp", () => {
   assert.match(json, new RegExp(sansItalic("DUTY LINE")));
   assert.match(json, new RegExp(sansItalic("LIVE")));
   assert.match(json, new RegExp(sansItalic("BotLenoAPP")));
+  assert.match(json, /_Nobody is in the duty line\._/);
   assert.match(json, /_No one on duty\._/);
-  assert.match(json, /WAIT/);
-  assert.match(json, /# NAME/);
+  assert.match(json, /🟢 in line/);
 });
 
 test("on-duty block is a bulleted mention and job list", () => {
@@ -681,10 +709,7 @@ test("missing job rows still show the entry's J.O. name", () => {
   assert.equal(formatJobList(line.rows[0]!.jobs, line.jobCount), "Abyss");
   const table = formatDutyLineTable(line, "Asia/Manila");
   assert.match(table, /Abyss/);
-  assert.match(table, /    ∟ Abyss/);
-  const body = table.slice(4).replace(/\n```[\s\S]*$/, "");
-  const row = body.split("\n")[1] ?? "";
-  assert.equal(row.includes("—"), false);
+  assert.match(table, /Jobs: Abyss/);
 });
 
 test("entries without hours do not expire", () => {

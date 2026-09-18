@@ -70,20 +70,9 @@ export function dutyStatusBadge(status: DutyStatus): string {
 }
 
 const NBSP = "\u00a0";
-const NAME_WIDTH = 10;
-const STATUS_WIDTH = 6;
-const HOURS_WIDTH = 6;
-const WAIT_WIDTH = 7;
 const DUTY_STATUS_LEGEND = "-# 🟢 in line · 🟡 AFK · 🔴 on duty";
-
-function formatHoursSample(hours: number | null): string {
-  if (hours == null) return "-".padStart(HOURS_WIDTH);
-  return `${hours.toFixed(1)}h`.padStart(HOURS_WIDTH);
-}
-
-function formatWaitSample(from: string | Date, now: Date): string {
-  return formatElapsedCompact(from, now).padStart(WAIT_WIDTH);
-}
+const QUEUE_CARD_LIMIT = 8;
+const QUEUE_TEXT_LIMIT = 3500;
 
 function jobShortName(job: { name: string }): string {
   const name = asciiText(job.name) || job.name;
@@ -91,14 +80,28 @@ function jobShortName(job: { name: string }): string {
   return slash > 0 ? name.slice(0, slash).trim() : name;
 }
 
-function jobArrowLine(
+function queueJobLabel(
   jobs: Array<{ name: string }>,
-  numWidth: number,
+  totalJobCount: number,
 ): string {
-  const jobIndent = " ".repeat(numWidth + 2);
-  if (jobs.length === 0) return `${jobIndent}∟ -`;
+  if (jobs.length === 0) return "-";
+  if (totalJobCount > 0 && jobs.length >= totalJobCount) return "All jobs";
   const names = jobs.map(jobShortName).filter(Boolean);
-  return `${jobIndent}∟ ${names.join(", ") || "-"}`;
+  return names.join(", ") || "-";
+}
+
+function lineStatusPhrase(status: DutyStatus): string {
+  if (status === "on_duty") return "On duty";
+  if (status === "afk") return "AFK";
+  return "In line";
+}
+
+function smallLines(lines: readonly string[]): string {
+  return lines.map((line) => (line.length === 0 ? "-#" : `-# ${line}`)).join("\n");
+}
+
+function hoursLabel(hours: number | null): string {
+  return hours == null ? "-" : `${hours.toFixed(1)}h`;
 }
 
 export function padMono(value: string, width: number): string {
@@ -106,11 +109,6 @@ export function padMono(value: string, width: number): string {
     value.length > width ? `${value.slice(0, Math.max(1, width - 1))}.` : value;
   return `\`${clipped.padEnd(width, NBSP)}\``;
 }
-
-export const DUTY_LINE_COLUMNS = {
-  name: NAME_WIDTH,
-  status: STATUS_WIDTH,
-} as const;
 
 const ZERO_WIDTH = /[\u200B-\u200D\uFEFF\u2060]/g;
 
@@ -127,14 +125,6 @@ export function sanitizeDisplayName(value: string | null | undefined): string {
 
 function asciiText(value: string): string {
   return sanitizeDisplayName(value);
-}
-
-function tableCell(value: string, width: number): string {
-  const clean = asciiText(value);
-  if (clean.length > width) {
-    return `${clean.slice(0, Math.max(1, width - 1))}.`;
-  }
-  return clean.padEnd(width, " ");
 }
 
 export function pickDiscordDisplayName(source: {
@@ -167,10 +157,6 @@ export function dutyDisplayName(entry: {
   username?: string | null;
 }): string {
   return pickDiscordDisplayName(entry);
-}
-
-export function formatDutyLineHeader(): string {
-  return `${"#".padEnd(2)}${"NAME".padEnd(NAME_WIDTH)}${"HOURS".padEnd(HOURS_WIDTH)}${"WAIT".padStart(WAIT_WIDTH)} ${"STATUS".padEnd(STATUS_WIDTH)}`;
 }
 
 export function formatJobList(
@@ -258,19 +244,24 @@ export function queuePanelEmbed(queues: QueueWithCount[]): EmbedBuilder {
 export function formatDashboardEntry(
   entry: DutyLineRow,
   _timezone: string,
-  _totalJobCount: number,
+  totalJobCount: number,
   now = new Date(),
 ): string {
-  const num = String(entry.position).padEnd(2);
-  const name = tableCell(dutyDisplayName(entry), NAME_WIDTH);
-  const hours = formatHoursSample(entry.durationHours);
-  const wait = formatWaitSample(entry.availableFrom, now);
-  const row = `${num}${name}${hours}${wait} ${dutyStatusDot(entry.status)}`;
-  return `${row}\n${jobArrowLine(entry.jobs, num.length)}`;
+  const name = asciiText(dutyDisplayName(entry)) || "User";
+  return smallLines([
+    `${entry.position} ${name}`,
+    `  Status: ${dutyStatusDot(entry.status)} ${lineStatusPhrase(entry.status)}`,
+    `  Jobs: ${queueJobLabel(entry.jobs, totalJobCount)}`,
+    `  Hours: ${hoursLabel(entry.durationHours)} · Wait: ${formatElapsedCompact(entry.availableFrom, now)}`,
+  ]);
 }
 
-function wrapDutyTable(body: string): string {
-  return `\`\`\`\n${body}\n\`\`\``;
+function assembleQueueCards(cards: string[], hidden: number): string {
+  if (cards.length === 0) {
+    return `${smallLines(["_Nobody is in the duty line._"])}\n${DUTY_STATUS_LEGEND}`;
+  }
+  const extra = hidden > 0 ? `\n-# +${hidden} more in line` : "";
+  return `${cards.join("\n-#\n")}${extra}\n${DUTY_STATUS_LEGEND}`;
 }
 
 export function formatDutyLineTable(
@@ -278,18 +269,16 @@ export function formatDutyLineTable(
   timezone: string,
   now = new Date(),
 ): string {
-  const visible = line.rows.slice(0, 12);
-  const header = formatDutyLineHeader();
-  if (visible.length === 0) {
-    return `${wrapDutyTable(`${header}\n_Nobody is in the duty line._`)}\n${DUTY_STATUS_LEGEND}`;
+  const cards: string[] = [];
+  for (const entry of line.rows) {
+    if (cards.length >= QUEUE_CARD_LIMIT) break;
+    const next = formatDashboardEntry(entry, timezone, line.jobCount, now);
+    const hiddenIfAdded = line.rows.length - (cards.length + 1);
+    const trial = assembleQueueCards([...cards, next], hiddenIfAdded);
+    if (cards.length > 0 && trial.length > QUEUE_TEXT_LIMIT) break;
+    cards.push(next);
   }
-
-  const rows = visible
-    .map((entry) => formatDashboardEntry(entry, timezone, line.jobCount, now))
-    .join("\n");
-  const extra =
-    line.rows.length > 12 ? `\n_+${line.rows.length - 12} more_` : "";
-  return `${wrapDutyTable(`${header}\n${rows}`)}${extra}\n${DUTY_STATUS_LEGEND}`;
+  return assembleQueueCards(cards, line.rows.length - cards.length);
 }
 
 function onDutyJobLabel(row: DutyLineRow): string {

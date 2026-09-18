@@ -12,14 +12,21 @@ import {
   listQueueBoard,
   toggleAfk,
 } from "../services/queue.js";
-import { isAppError } from "../services/errors.js";
+import { parseDurationHours } from "../services/hours.js";
+import { AppError, isAppError } from "../services/errors.js";
 import { parseJoinModal, isUuid } from "./ids.js";
-import { setPendingJoin, takePendingJoin } from "./session.js";
+import {
+  peekPendingJoin,
+  patchPendingJoinHours,
+  setPendingJoin,
+  takePendingJoin,
+} from "./session.js";
 import { buttonCooldown, joinCooldown, requireGuildId } from "./guards.js";
 import {
   alreadyQueuedEmbed,
   errorEmbed,
   infoEmbed,
+  jobHoursSetupEmbed,
   joinedEmbed,
   queuePanelEmbed,
   userStatusEmbed,
@@ -28,11 +35,13 @@ import {
 } from "../ui/embeds.js";
 import {
   hoursModal,
+  jobHourNumberModal,
+  jobHoursSetupRows,
   leaveConfirmButtons,
   queueSelectRow,
   userQueueButtons,
 } from "../ui/components.js";
-import { ephemeral, replyAppError, safeReply, scheduleEphemeralDelete } from "../utils/reply.js";
+import { ephemeral, replaceEphemeralPrompt, replyAppError, safeReply, scheduleEphemeralDelete } from "../utils/reply.js";
 import type { ModalSubmitInteraction } from "discord.js";
 import { logQueueActivity } from "../services/activity-log.js";
 import {
@@ -142,6 +151,112 @@ export async function handleQueueSelect(
   }
 
   setPendingJoin(guildId, interaction.user.id, queueIds);
+  const selected = queueIds
+    .map((id) => store.getQueue(ctx.db, id))
+    .filter((queue): queue is NonNullable<typeof queue> => Boolean(queue));
+  await safeReply(
+    interaction,
+    ephemeral({
+      embeds: [jobHoursSetupEmbed(selected, {})],
+      components: jobHoursSetupRows(selected, {}),
+    }),
+  );
+}
+
+function selectedJoinQueues(ctx: AppContext, queueIds: string[]) {
+  return queueIds
+    .map((id) => store.getQueue(ctx.db, id))
+    .filter((queue): queue is NonNullable<typeof queue> => Boolean(queue));
+}
+
+export async function handleJoinJobBound(
+  interaction: ButtonInteraction,
+  ctx: AppContext,
+  parsed: { bound: "max" | "min"; queueId: string },
+): Promise<void> {
+  const guildId = requireGuildId(interaction);
+  buttonCooldown(ctx, interaction.user.id);
+  const pending = peekPendingJoin(guildId, interaction.user.id);
+  if (!pending || !pending.queueIds.includes(parsed.queueId)) {
+    await safeReply(
+      interaction,
+      ephemeral({
+        embeds: [warningEmbed("Selection expired", "Select your J.O.s again, then join.")],
+      }),
+    );
+    return;
+  }
+  const queue = store.getQueue(ctx.db, parsed.queueId);
+  if (!queue || queue.guildId !== guildId) {
+    await safeReply(
+      interaction,
+      ephemeral({ embeds: [warningEmbed("That J.O. is no longer available.")] }),
+    );
+    return;
+  }
+  await interaction.showModal(jobHourNumberModal(queue.id, queue.name, parsed.bound));
+}
+
+export async function handleJoinJobHoursNumber(
+  interaction: ModalSubmitInteraction,
+  ctx: AppContext,
+  parsed: { bound: "max" | "min"; queueId: string },
+): Promise<void> {
+  const guildId = requireGuildId(interaction);
+  const hours = parseDurationHours(interaction.fields.getTextInputValue("hours"), 0.25);
+  if (!hours.ok || hours.hours == null) {
+    throw new AppError(
+      hours.ok ? "Enter the job hours. Example: 12" : hours.error,
+      "INVALID_JOB_HOURS",
+    );
+  }
+  const pref =
+    parsed.bound === "max"
+      ? { min: null, max: hours.hours }
+      : { min: hours.hours, max: null };
+  const pending = patchPendingJoinHours(
+    guildId,
+    interaction.user.id,
+    parsed.queueId,
+    pref,
+  );
+  if (!pending) {
+    await safeReply(
+      interaction,
+      ephemeral({
+        embeds: [warningEmbed("Selection expired", "Select your J.O.s again, then join.")],
+      }),
+    );
+    return;
+  }
+  const selected = selectedJoinQueues(ctx, pending.queueIds);
+  const payload = {
+    embeds: [jobHoursSetupEmbed(selected, pending.jobHourPrefs)],
+    components: jobHoursSetupRows(selected, pending.jobHourPrefs),
+  };
+  if (interaction.message) {
+    await interaction.deferUpdate();
+    await interaction.message.edit(payload).catch(() => undefined);
+    return;
+  }
+  await safeReply(interaction, ephemeral(payload));
+}
+
+export async function handleJoinJobHoursDone(
+  interaction: ButtonInteraction,
+  ctx: AppContext,
+): Promise<void> {
+  const guildId = requireGuildId(interaction);
+  buttonCooldown(ctx, interaction.user.id);
+  if (!peekPendingJoin(guildId, interaction.user.id)) {
+    await safeReply(
+      interaction,
+      ephemeral({
+        embeds: [warningEmbed("Selection expired", "Select your J.O.s again, then join.")],
+      }),
+    );
+    return;
+  }
   await interaction.showModal(hoursModal());
 }
 
@@ -159,11 +274,11 @@ export async function handleJoinModal(
     return;
   }
 
-  const queueIds =
+  const pending =
     parsed === "pending"
       ? takePendingJoin(guildId, interaction.user.id)
-      : [parsed];
-  if (!queueIds || queueIds.length === 0) {
+      : { queueIds: [parsed], jobHourPrefs: {} };
+  if (!pending || pending.queueIds.length === 0) {
     await safeReply(
       interaction,
       ephemeral({
@@ -180,15 +295,14 @@ export async function handleJoinModal(
 
   joinCooldown(ctx, interaction.user.id);
   const hoursInput = interaction.fields.getTextInputValue("hours");
-  const jobHoursInput = interaction.fields.getTextInputValue("jobHours");
 
   try {
     const result = joinQueue(ctx.db, {
       guildId,
-      queueIds,
+      queueIds: pending.queueIds,
       userId: interaction.user.id,
       hoursInput,
-      jobHoursInput,
+      jobHourPrefs: pending.jobHourPrefs,
     });
     ctx.logger.info(
       {
@@ -232,7 +346,7 @@ export async function handleJoinModal(
       }
     }
     const queues = listQueueBoard(ctx.db, guildId);
-    await safeReply(
+    await replaceEphemeralPrompt(
       interaction,
       ephemeral({
         embeds: [

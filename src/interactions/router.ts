@@ -4,9 +4,12 @@ import type {
   StringSelectMenuInteraction,
 } from "discord.js";
 import type { AppContext } from "../app-context.js";
-import { Ids, parseSendJoButton } from "./ids.js";
+import { Ids, parseJobHourBoundButton, parseJobHourNumberModal, parseSendJoButton } from "./ids.js";
 import {
   handleAfk,
+  handleJoinJobBound,
+  handleJoinJobHoursDone,
+  handleJoinJobHoursNumber,
   handleJoinModal,
   handleJoinOpen,
   handleLeaveCancel,
@@ -56,7 +59,15 @@ export async function handleButton(
       case Ids.leaveCancel:
         await handleLeaveCancel(interaction, ctx);
         return;
+      case Ids.joinJobHoursDone:
+        await handleJoinJobHoursDone(interaction, ctx);
+        return;
       default: {
+        const jobBound = parseJobHourBoundButton(interaction.customId);
+        if (jobBound) {
+          await handleJoinJobBound(interaction, ctx, jobBound);
+          return;
+        }
         const sendJo = parseSendJoButton(interaction.customId);
         if (sendJo) {
           await handleSendJoButton(interaction, ctx, sendJo);
@@ -107,6 +118,11 @@ export async function handleModal(
       interaction.customId.startsWith(Ids.joinModalPrefix)
     ) {
       await handleJoinModal(interaction, ctx);
+      return;
+    }
+    const jobHours = parseJobHourNumberModal(interaction.customId);
+    if (jobHours) {
+      await handleJoinJobHoursNumber(interaction, ctx, jobHours);
       return;
     }
     if (interaction.customId === Ids.sendJoModal) {

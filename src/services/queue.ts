@@ -8,6 +8,7 @@ import type {
   DutyLineRow,
   DutyStatus,
   EntryStatus,
+  JobHourPref,
   Queue,
   QueueEntry,
   QueueStatus,
@@ -24,6 +25,7 @@ export interface JoinInput {
   userId: string;
   hoursInput: string;
   jobHoursInput?: string;
+  jobHourPrefs?: Record<string, JobHourPref>;
   now?: Date;
 }
 
@@ -140,7 +142,9 @@ export function joinQueue(db: Db, input: JoinInput): JoinResult {
     if (!parsed.ok) {
       throw new AppError(parsed.error, "INVALID_HOURS");
     }
-    const jobPrefs = parseJobHourPrefs(input.jobHoursInput ?? "", queues);
+    const jobPrefs = input.jobHourPrefs
+      ? { ok: true as const, prefs: input.jobHourPrefs }
+      : parseJobHourPrefs(input.jobHoursInput ?? "", queues);
     if (!jobPrefs.ok) {
       throw new AppError(jobPrefs.error, "INVALID_JOB_HOURS");
     }

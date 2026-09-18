@@ -32,6 +32,10 @@ export const Ids = {
   sendJoModal: "sendjo:modal",
   sendJoYesPrefix: "sendjo:yes:",
   sendJoNoPrefix: "sendjo:no:",
+  joinJobMaxPrefix: "queue:jh:max:",
+  joinJobMinPrefix: "queue:jh:min:",
+  joinJobHoursDone: "queue:jh:done",
+  joinJobNumModalPrefix: "queue:jh:n:",
 };
 
 export function parseJoinModal(customId: string): "pending" | string | null {
@@ -43,6 +47,32 @@ export function parseJoinModal(customId: string): "pending" | string | null {
 
 export function isUuid(value: string): boolean {
   return UUID_RE.test(value);
+}
+
+export function parseJobHourBoundButton(
+  customId: string,
+): { bound: "max" | "min"; queueId: string } | null {
+  if (customId.startsWith(Ids.joinJobMaxPrefix)) {
+    const queueId = customId.slice(Ids.joinJobMaxPrefix.length);
+    return isUuid(queueId) ? { bound: "max", queueId } : null;
+  }
+  if (customId.startsWith(Ids.joinJobMinPrefix)) {
+    const queueId = customId.slice(Ids.joinJobMinPrefix.length);
+    return isUuid(queueId) ? { bound: "min", queueId } : null;
+  }
+  return null;
+}
+
+export function parseJobHourNumberModal(
+  customId: string,
+): { bound: "max" | "min"; queueId: string } | null {
+  if (!customId.startsWith(Ids.joinJobNumModalPrefix)) return null;
+  const rest = customId.slice(Ids.joinJobNumModalPrefix.length);
+  const match = /^(max|min):(.+)$/.exec(rest);
+  if (!match) return null;
+  const bound = match[1] as "max" | "min";
+  const queueId = match[2] ?? "";
+  return isUuid(queueId) ? { bound, queueId } : null;
 }
 
 export function parseSendJoButton(

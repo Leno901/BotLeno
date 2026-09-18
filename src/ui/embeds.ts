@@ -11,6 +11,7 @@ import type {
   DutyLine,
   DutyLineRow,
   DutyStatus,
+  JobHourPref,
   Queue,
   QueueStatus,
   QueueWithCount,
@@ -198,6 +199,27 @@ export function infoEmbed(title: string, description?: string): EmbedBuilder {
   const embed = new EmbedBuilder().setColor(INFO_COLOR).setTitle(title);
   if (description) embed.setDescription(description);
   return embed;
+}
+
+export function jobHoursSetupEmbed(
+  queues: Array<{ id: string; name: string; emoji: string }>,
+  prefs: Record<string, JobHourPref>,
+): EmbedBuilder {
+  const lines = queues.map((queue) => {
+    const pref = prefs[queue.id];
+    const tag = formatJobHourTag(pref?.min, pref?.max).replace(/^\s+/, "").replace(/[()]/g, "");
+    return `**${queue.name}:** ${tag || "not set"}`;
+  });
+  return infoEmbed(
+    "Job hours",
+    [
+      "**Max** = this long or shorter. **Min** = this long or longer. Then type a number.",
+      "",
+      ...lines,
+      "",
+      "Tap **Continue** when you're done.",
+    ].join("\n"),
+  );
 }
 
 const JOB_COL = 16;

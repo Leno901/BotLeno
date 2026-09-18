@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseDurationHours } from "../src/services/hours.js";
+import {
+  formatJobHourTag,
+  jobAllowsHours,
+  parseDurationHours,
+  parseHourRange,
+  parseJobHourPrefs,
+  parseOfferJobHours,
+} from "../src/services/hours.js";
 
 test("accepts whole and decimal hours within limits", () => {
   assert.deepEqual(parseDurationHours("8", 0.5), { ok: true, hours: 8 });
@@ -30,4 +37,36 @@ test("enforces a configurable minimum", () => {
   if (!result.ok) {
     assert.match(result.error, /Minimum availability is 0.5 hours/);
   }
+});
+
+const QUEUES = [
+  { id: "pet", slug: "pet-farm", name: "Pet Farm" },
+  { id: "abyss", slug: "abyss", name: "Abyss" },
+];
+
+test("parses job hour ranges and per-job prefs", () => {
+  assert.deepEqual(parseHourRange("12-"), { min: null, max: 12 });
+  assert.deepEqual(parseHourRange("15+"), { min: 15, max: null });
+  assert.deepEqual(parseHourRange("8-12"), { min: 8, max: 12 });
+  assert.deepEqual(parseJobHourPrefs("pet:12- abyss:15+", QUEUES), {
+    ok: true,
+    prefs: { pet: { min: null, max: 12 }, abyss: { min: 15, max: null } },
+  });
+  assert.deepEqual(parseJobHourPrefs("12-", QUEUES), {
+    ok: true,
+    prefs: { pet: { min: null, max: 12 }, abyss: { min: null, max: 12 } },
+  });
+  assert.equal(parseJobHourPrefs("raid:12-", QUEUES).ok, false);
+  assert.equal(parseOfferJobHours("").ok, false);
+  assert.deepEqual(parseOfferJobHours("12"), { ok: true, hours: 12 });
+});
+
+test("jobAllowsHours and formatJobHourTag", () => {
+  assert.equal(jobAllowsHours({ min: null, max: 12 }, 12), true);
+  assert.equal(jobAllowsHours({ min: null, max: 12 }, 13), false);
+  assert.equal(jobAllowsHours({ hourMin: 15, hourMax: null }, 14), false);
+  assert.equal(jobAllowsHours({ hourMin: 15, hourMax: null }, 15), true);
+  assert.equal(jobAllowsHours(undefined, 12), true);
+  assert.equal(formatJobHourTag(null, 12), " (≤12h)");
+  assert.equal(formatJobHourTag(15, null), " (≥15h)");
 });

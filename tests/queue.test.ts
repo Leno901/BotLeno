@@ -14,6 +14,7 @@ import {
   leaveQueue,
   dispatchNext,
   listDutyLine,
+  nextReadyForJob,
   listQueueMembers,
   moveEntry,
   recordOfferPass,
@@ -489,7 +490,7 @@ test("dashboard queue rows are stacked cards with small text", () => {
   assert.equal(/\n-#\n/.test(table), false);
 });
 
-test("dashboard queue shows eight cards then a leftover count", () => {
+test("dashboard queue lists every person, including the ninth", () => {
   const rows = Array.from({ length: 10 }, (_, index) => ({
     entryId: `e${index + 1}`,
     userId: `user-${index + 1}`,
@@ -501,7 +502,7 @@ test("dashboard queue shows eight cards then a leftover count", () => {
     availableFrom: "2026-09-17T00:00:00.000Z",
     availableUntil: null,
   }));
-  const table = formatDutyLineTable(
+  const payload = dutyLineDashboardPayload(
     {
       rows,
       inLine: 10,
@@ -513,9 +514,10 @@ test("dashboard queue shows eight cards then a leftover count", () => {
     "Asia/Manila",
     NOW,
   );
-  assert.match(table, /-# 8 User8/);
-  assert.equal(table.includes("User9"), false);
-  assert.match(table, /-# \+2 more in line/);
+  const description = payload.embeds[0]!.data.description ?? "";
+  assert.match(description, /9 User9/);
+  assert.match(description, /10 User10/);
+  assert.equal(description.includes("+2 more"), false);
 });
 
 test("dashboard JOBS sit on a Jobs line", () => {
@@ -667,6 +669,13 @@ test("buildQueueEmbed shares formatEntry for queue and on-duty people", () => {
   assert.equal(
     formatEntry(person),
     "1 Vy\nStatus: 🟢 In line\nJobs: Pet Farm, Exploration\nHours: - · Wait: 37m",
+  );
+  assert.equal(
+    formatEntry({
+      ...person,
+      jobs: ["Pet Farm (≤12h)", "Abyss (≥15h)"],
+    }),
+    "1 Vy\nStatus: 🟢 In line\nJobs: Pet Farm (≤12h), Abyss (≥15h)\nHours: - · Wait: 37m",
   );
   const embed = buildQueueEmbed({
     inLine: 2,
@@ -998,6 +1007,7 @@ test("join embed hides personal status channel while the feature is off", () => 
         isAfk: false,
         offerStrikes: 0,
         acceptedJobIds: [],
+        jobHourPrefs: {},
         statusChannelId: "unknown",
         statusMessageId: null,
         createdAt: NOW.toISOString(),
@@ -1050,7 +1060,7 @@ test("on-duty people leave the waiting table but stay in the on-duty block", () 
   assert.equal(line.inLine, 1);
 });
 
-test("two declined offers move the person to the end of the line", () => {
+test("manual declines do not requeue; two missed DMs move to the end", () => {
   const db = createTestDb();
   const queueId = pvpId(db);
   const a = joinQueue(db, {
@@ -1075,28 +1085,72 @@ test("two declined offers move the person to the end of the line", () => {
     now: NOW,
   });
 
-  const first = recordOfferPass(db, {
+  const declined = recordOfferPass(db, {
     guildId: GUILD,
     entryId: a.entry.id,
     actorId: "staff",
     reason: "declined",
     now: NOW,
   });
-  assert.equal(first.strikes, 1);
-  assert.equal(first.requeued, false);
+  assert.equal(declined.strikes, 0);
+  assert.equal(declined.requeued, false);
+  assert.equal(store.getEntry(db, a.entry.id)?.offerStrikes, 0);
   assert.equal(store.positionFor(db, store.getEntry(db, a.entry.id)!), 1);
 
-  const second = recordOfferPass(db, {
+  const firstMiss = recordOfferPass(db, {
     guildId: GUILD,
     entryId: a.entry.id,
     actorId: "staff",
     reason: "timeout",
     now: NOW,
   });
-  assert.equal(second.strikes, 2);
-  assert.equal(second.requeued, true);
+  assert.equal(firstMiss.strikes, 1);
+  assert.equal(firstMiss.requeued, false);
+  assert.equal(store.positionFor(db, store.getEntry(db, a.entry.id)!), 1);
+
+  const secondMiss = recordOfferPass(db, {
+    guildId: GUILD,
+    entryId: a.entry.id,
+    actorId: "staff",
+    reason: "timeout",
+    now: NOW,
+  });
+  assert.equal(secondMiss.strikes, 2);
+  assert.equal(secondMiss.requeued, true);
   const moved = store.getEntry(db, a.entry.id)!;
   assert.equal(moved.status, "waiting");
   assert.equal(moved.offerStrikes, 0);
   assert.equal(store.positionFor(db, moved), 3);
+});
+
+test("job hour prefs persist and skip send-jo without strikes", () => {
+  const db = createTestDb();
+  store.ensureGuild(db, GUILD);
+  const pet = store.getQueueBySlug(db, GUILD, "pet-farm")!.id;
+  const abyss = store.getQueueBySlug(db, GUILD, "abyss")!.id;
+
+  const joined = joinQueue(db, {
+    guildId: GUILD,
+    queueIds: [pet, abyss],
+    userId: USER_A,
+    hoursInput: "8",
+    jobHoursInput: "pet:12- abyss:15+",
+    now: NOW,
+  });
+  assert.deepEqual(joined.entry.jobHourPrefs[pet], { min: null, max: 12 });
+  assert.deepEqual(joined.entry.jobHourPrefs[abyss], { min: 15, max: null });
+
+  const line = listDutyLine(db, GUILD, NOW);
+  const petJob = line.rows[0]?.jobs.find((job) => job.id === pet);
+  const abyssJob = line.rows[0]?.jobs.find((job) => job.id === abyss);
+  assert.equal(petJob?.hourMax, 12);
+  assert.equal(abyssJob?.hourMin, 15);
+
+  const payload = dutyLineDashboardPayload(line, "UTC", NOW);
+  assert.match(payload.embeds[0]!.data.description ?? "", /Pet Farm \(≤12h\)/);
+  assert.match(payload.embeds[0]!.data.description ?? "", /Abyss \(≥15h\)/);
+
+  assert.equal(nextReadyForJob(db, GUILD, pet, [], NOW, 15), null);
+  assert.equal(nextReadyForJob(db, GUILD, pet, [], NOW, 10)?.userId, USER_A);
+  assert.equal(store.getEntry(db, joined.entry.id)?.offerStrikes, 0);
 });

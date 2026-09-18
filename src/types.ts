@@ -57,6 +57,7 @@ export interface QueueEntry {
   statusChannelId: string | null;
   statusMessageId: string | null;
   acceptedJobIds: string[];
+  jobHourPrefs: Record<string, JobHourPref>;
   createdAt: string;
   updatedAt: string;
 }
@@ -89,11 +90,18 @@ export interface DashboardQueue extends QueueWithCount {
 
 export type DutyStatus = "ready" | "afk" | "on_duty";
 
+export interface JobHourPref {
+  min: number | null;
+  max: number | null;
+}
+
 export interface DutyJob {
   id: string;
   slug: string;
   name: string;
   emoji: string;
+  hourMin?: number | null;
+  hourMax?: number | null;
 }
 
 export interface DutyLineRow {

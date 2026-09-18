@@ -26,6 +26,7 @@ interface SendJoChain {
   queueIds: string[];
   queueName: string;
   offerText: string;
+  jobHours: number;
   staffId: string;
   skipEntryIds: string[];
   currentEntryId: string;
@@ -74,6 +75,7 @@ export async function startSendJo(
     queueId?: string;
     queueIds?: string[];
     offerText: string;
+    jobHours: number;
     staffId: string;
   },
 ): Promise<{ queueName: string }> {
@@ -97,7 +99,14 @@ export async function startSendJo(
   }
   const queueName = queues.map((queue) => queue.name).join(", ");
 
-  const first = nextReadyForJob(ctx.db, options.guildId, queueIds);
+  const first = nextReadyForJob(
+    ctx.db,
+    options.guildId,
+    queueIds,
+    [],
+    new Date(),
+    options.jobHours,
+  );
   if (!first) {
     throw new AppError("No one in line is READY for that J.O.", "SENDJO_EMPTY");
   }
@@ -108,6 +117,7 @@ export async function startSendJo(
     queueIds,
     queueName,
     offerText: options.offerText,
+    jobHours: options.jobHours,
     staffId: options.staffId,
     skipEntryIds: [],
     currentEntryId: first.entryId,
@@ -357,6 +367,8 @@ async function continueAfterReject(
     chain.guildId,
     chain.queueIds,
     chain.skipEntryIds,
+    new Date(),
+    chain.jobHours,
   );
 
   if (!next) {
@@ -379,7 +391,7 @@ async function continueAfterReject(
     reason === "declined"
       ? "declined"
       : reason === "timeout"
-        ? "did not respond"
+        ? "did not respond and was skipped"
         : "could not be reached";
 
   await notifyStaff(

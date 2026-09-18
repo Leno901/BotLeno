@@ -50,6 +50,25 @@ test("pickReadyForJob skips AFK, on-duty, wrong job, then exhausted", () => {
   assert.equal(pickReadyForJob(rows, ["pvp", "dungeon"], ["c"])?.entryId, "d");
 });
 
+test("pickReadyForJob skips READY people whose job hours do not match", () => {
+  const rows = [
+    {
+      entryId: "pet-short",
+      status: "ready" as const,
+      jobs: [{ id: "pet", hourMin: null, hourMax: 12 }],
+    },
+    {
+      entryId: "pet-long",
+      status: "ready" as const,
+      jobs: [{ id: "pet", hourMin: 15, hourMax: null }],
+    },
+  ];
+
+  assert.equal(pickReadyForJob(rows, "pet", [], 15)?.entryId, "pet-long");
+  assert.equal(pickReadyForJob(rows, "pet", [], 10)?.entryId, "pet-short");
+  assert.equal(pickReadyForJob(rows, "pet", ["pet-long"], 15), null);
+});
+
 test("nextReadyForJob walks the duty line in order", () => {
   const db = createTestDb();
   const { pvp, dungeon } = ids(db);
@@ -294,8 +313,8 @@ test("J.O. offer DM result cards keep the offer text", () => {
   assert.match(declined.data.description ?? "", /stay in line/);
 
   const expired = sendJoOfferResultEmbed("Abyss", "a", "timeout");
-  assert.equal(expired.data.title, "Abyss J.O. expired");
-  assert.match(expired.data.description ?? "", /timed out/);
+  assert.equal(expired.data.title, "Abyss J.O. skipped");
+  assert.match(expired.data.description ?? "", /skipped/);
 });
 
 test("J.O. offer cards attach Discord PNG thumbnails", () => {

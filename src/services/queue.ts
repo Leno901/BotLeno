@@ -14,7 +14,7 @@ import type {
   UserQueueView,
 } from "../types.js";
 import { AppError } from "./errors.js";
-import { parseDurationHours } from "./hours.js";
+import { jobAllowsHours, parseDurationHours, parseJobHourPrefs } from "./hours.js";
 import { calculateAvailableUntil, toUtcIso } from "./time.js";
 
 export interface JoinInput {
@@ -23,6 +23,7 @@ export interface JoinInput {
   queueIds?: string[];
   userId: string;
   hoursInput: string;
+  jobHoursInput?: string;
   now?: Date;
 }
 
@@ -139,6 +140,10 @@ export function joinQueue(db: Db, input: JoinInput): JoinResult {
     if (!parsed.ok) {
       throw new AppError(parsed.error, "INVALID_HOURS");
     }
+    const jobPrefs = parseJobHourPrefs(input.jobHoursInput ?? "", queues);
+    if (!jobPrefs.ok) {
+      throw new AppError(jobPrefs.error, "INVALID_JOB_HOURS");
+    }
 
     for (const queue of queues) {
       if (queue.maxSize !== null && store.waitingCount(db, queue.id) >= queue.maxSize) {
@@ -152,7 +157,7 @@ export function joinQueue(db: Db, input: JoinInput): JoinResult {
     const primary = queues[0]!;
     const availableUntil =
       parsed.hours == null ? null : toUtcIso(calculateAvailableUntil(now, parsed.hours));
-    const entry = store.insertEntry(db, {
+    let entry = store.insertEntry(db, {
       id: randomUUID(),
       guildId: input.guildId,
       queueId: primary.id,
@@ -164,6 +169,9 @@ export function joinQueue(db: Db, input: JoinInput): JoinResult {
       isAfk: false,
     });
     store.setEntryJobs(db, entry.id, queues.map((queue) => queue.id));
+    if (Object.keys(jobPrefs.prefs).length > 0) {
+      entry = store.updateEntryJobHourPrefs(db, entry.id, jobPrefs.prefs);
+    }
 
     store.insertHistory(db, {
       guildId: input.guildId,
@@ -271,12 +279,17 @@ function dutyStatus(entry: QueueEntry): DutyStatus {
 }
 
 function toDutyRow(db: Db, entry: QueueEntry): DutyLineRow {
-  const jobs = store.listEntryJobs(db, entry.id).map((queue) => ({
-    id: queue.id,
-    slug: queue.slug,
-    name: queue.name,
-    emoji: queue.emoji,
-  }));
+  const jobs = store.listEntryJobs(db, entry.id).map((queue) => {
+    const pref = entry.jobHourPrefs[queue.id];
+    return {
+      id: queue.id,
+      slug: queue.slug,
+      name: queue.name,
+      emoji: queue.emoji,
+      hourMin: pref?.min ?? null,
+      hourMax: pref?.max ?? null,
+    };
+  });
   const acceptedJobs = entry.acceptedJobIds
     .map((id) => jobs.find((job) => job.id === id) ?? queueJob(db, id))
     .filter((job): job is DutyJob => Boolean(job));
@@ -378,16 +391,28 @@ function offeredQueueIds(queueId: string | readonly string[]): string[] {
   return [...new Set(Array.isArray(queueId) ? queueId : [queueId])].filter(Boolean);
 }
 
-function hasAnyOfferedJob(jobs: Array<{ id: string }>, queueIds: readonly string[]): boolean {
-  return queueIds.some((id) => jobs.some((job) => job.id === id));
+function hasEligibleOfferedJob(
+  jobs: Array<{ id: string; hourMin?: number | null; hourMax?: number | null }>,
+  queueIds: readonly string[],
+  jobHours?: number,
+): boolean {
+  return queueIds.some((id) => {
+    const job = jobs.find((row) => row.id === id);
+    return Boolean(job) && jobAllowsHours(job, jobHours);
+  });
 }
 
 export function pickReadyForJob<
-  T extends { entryId: string; status: DutyStatus; jobs: Array<{ id: string }> },
+  T extends {
+    entryId: string;
+    status: DutyStatus;
+    jobs: Array<{ id: string; hourMin?: number | null; hourMax?: number | null }>;
+  },
 >(
   rows: readonly T[],
   queueId: string | readonly string[],
   skipEntryIds: readonly string[] = [],
+  jobHours?: number,
 ): T | null {
   const skip = new Set(skipEntryIds);
   const needed = offeredQueueIds(queueId);
@@ -397,7 +422,7 @@ export function pickReadyForJob<
       (row) =>
         row.status === "ready" &&
         !skip.has(row.entryId) &&
-        hasAnyOfferedJob(row.jobs, needed),
+        hasEligibleOfferedJob(row.jobs, needed, jobHours),
     ) ?? null
   );
 }
@@ -408,8 +433,14 @@ export function nextReadyForJob(
   queueId: string | readonly string[],
   skipEntryIds: readonly string[] = [],
   now = new Date(),
+  jobHours?: number,
 ) {
-  return pickReadyForJob(listDutyLine(db, guildId, now).rows, queueId, skipEntryIds);
+  return pickReadyForJob(
+    listDutyLine(db, guildId, now).rows,
+    queueId,
+    skipEntryIds,
+    jobHours,
+  );
 }
 
 export function dispatchEntry(
@@ -542,6 +573,17 @@ export function recordOfferPass(
     const entry = store.getEntry(db, options.entryId);
     if (!entry || entry.guildId !== options.guildId || entry.status !== "waiting") {
       return { strikes: 0, requeued: false };
+    }
+    if (options.reason === "declined") {
+      store.insertHistory(db, {
+        guildId: options.guildId,
+        queueId: entry.queueId,
+        userId: entry.userId,
+        actorId: options.actorId,
+        action: "declined",
+        details: JSON.stringify({ strikes: entry.offerStrikes }),
+      });
+      return { strikes: entry.offerStrikes, requeued: false };
     }
     const strikes = entry.offerStrikes + 1;
     if (strikes >= SEND_JO_STRIKES_TO_REQUEUE) {

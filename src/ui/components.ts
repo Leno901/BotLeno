@@ -111,11 +111,20 @@ export function hoursModal() {
     .setRequired(false)
     .setMaxLength(5);
 
+  const jobHours = new TextInputBuilder()
+    .setCustomId("jobHours")
+    .setLabel("Job hours you want (optional)")
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder("pet:12-  abyss:15+  or  12-")
+    .setRequired(false)
+    .setMaxLength(100);
+
   return new ModalBuilder()
     .setCustomId(Ids.joinModal)
     .setTitle("Join Duty Line")
     .addComponents(
       new ActionRowBuilder<TextInputBuilder>().addComponents(hours),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(jobHours),
     );
 }
 
@@ -250,11 +259,20 @@ export function sendJoModal() {
     .setMinLength(1)
     .setMaxLength(SEND_JO_OFFER_MAX_LENGTH);
 
+  const jobHours = new TextInputBuilder()
+    .setCustomId("jobHours")
+    .setLabel("Job hours")
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder("12")
+    .setRequired(true)
+    .setMaxLength(8);
+
   return new ModalBuilder()
     .setCustomId(Ids.sendJoModal)
     .setTitle("Send J.O. offer")
     .addComponents(
       new ActionRowBuilder<TextInputBuilder>().addComponents(offer),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(jobHours),
     );
 }
 

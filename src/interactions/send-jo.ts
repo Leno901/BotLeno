@@ -7,6 +7,8 @@ import {
 } from "discord.js";
 import type { AppContext } from "../app-context.js";
 import { listQueueBoard } from "../services/queue.js";
+import { parseOfferJobHours } from "../services/hours.js";
+import { AppError } from "../services/errors.js";
 import {
   isSendJoBusy,
   startSendJo,
@@ -71,7 +73,7 @@ export async function startSendJoCommand(
       embeds: [
         infoEmbed(
           "Send J.O.",
-          "Select one or more J.O. categories, then enter the offer message.",
+          "Select one or more J.O. categories, then enter the offer and job hours.",
         ),
       ],
       components: [sendJoQueueSelect(queues)],
@@ -146,10 +148,15 @@ export async function handleSendJoModal(
     const offerText = validateOfferText(
       interaction.fields.getTextInputValue("offer"),
     );
+    const hours = parseOfferJobHours(interaction.fields.getTextInputValue("jobHours"));
+    if (!hours.ok) {
+      throw new AppError(hours.error, "INVALID_JOB_HOURS");
+    }
     const started = await startSendJo(ctx, {
       guildId,
       queueIds,
       offerText,
+      jobHours: hours.hours!,
       staffId: interaction.user.id,
     });
     await replaceEphemeralPrompt(

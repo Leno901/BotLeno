@@ -180,6 +180,7 @@ export async function handleJoinModal(
 
   joinCooldown(ctx, interaction.user.id);
   const hoursInput = interaction.fields.getTextInputValue("hours");
+  const jobHoursInput = interaction.fields.getTextInputValue("jobHours");
 
   try {
     const result = joinQueue(ctx.db, {
@@ -187,6 +188,7 @@ export async function handleJoinModal(
       queueIds,
       userId: interaction.user.id,
       hoursInput,
+      jobHoursInput,
     });
     ctx.logger.info(
       {

@@ -8,6 +8,7 @@ import {
 } from "discord.js";
 import { BRAND_COLOR } from "../config/defaults.js";
 import type { DutyLine, DutyLineRow, DutyStatus } from "../types.js";
+import { formatJobHourTag } from "../services/hours.js";
 import { discordTimestamp } from "../services/time.js";
 import { userStatusButtons } from "./components.js";
 import {
@@ -16,8 +17,6 @@ import {
   dutyStatusBadge,
   formatDutyLineTable,
 } from "./embeds.js";
-
-const QUEUE_CARD_LIMIT = 8;
 
 export interface QueueEmbedPerson {
   position: number;
@@ -76,8 +75,11 @@ function jobsForRow(row: DutyLineRow, totalJobCount: number): string[] {
   const source =
     row.status === "on_duty" && row.acceptedJobs?.length ? row.acceptedJobs : row.jobs;
   if (source.length === 0) return ["-"];
-  if (totalJobCount > 0 && source.length >= totalJobCount) return ["All jobs"];
-  const names = source.map((job) => shortJobName(job.name)).filter(Boolean);
+  const tagged = source.some((job) => job.hourMin != null || job.hourMax != null);
+  if (!tagged && totalJobCount > 0 && source.length >= totalJobCount) return ["All jobs"];
+  const names = source
+    .map((job) => `${shortJobName(job.name)}${formatJobHourTag(job.hourMin, job.hourMax)}`)
+    .filter(Boolean);
   return names.length ? names : ["-"];
 }
 
@@ -152,9 +154,7 @@ export function dutyLineDashboardPayload(
     afk: line.afkCount,
     onDuty: line.onDutyCount,
     updatedAt,
-    queue: line.rows.slice(0, QUEUE_CARD_LIMIT).map((row) =>
-      toEmbedPerson(row, line.jobCount, updatedAt),
-    ),
+    queue: line.rows.map((row) => toEmbedPerson(row, line.jobCount, updatedAt)),
     onDutyList: line.onDuty.map((row) => toEmbedPerson(row, line.jobCount, updatedAt)),
   });
 

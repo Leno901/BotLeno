@@ -179,4 +179,8 @@ ALTER TABLE queue_entries ADD COLUMN status_message_id TEXT;
     id: "009_accepted_jobs",
     sql: `ALTER TABLE queue_entries ADD COLUMN accepted_job_ids TEXT;`,
   },
+  {
+    id: "010_job_hour_prefs",
+    sql: `ALTER TABLE queue_entries ADD COLUMN job_hour_prefs TEXT;`,
+  },
 ] as const;

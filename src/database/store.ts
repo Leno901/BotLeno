@@ -3,6 +3,7 @@ import { DEFAULT_QUEUES, DEFAULT_TIMEZONE } from "../config/defaults.js";
 import type {
   EntryStatus,
   GuildConfig,
+  JobHourPref,
   Queue,
   QueueEntry,
   QueueHistoryRow,
@@ -60,6 +61,7 @@ interface EntryRow {
   status_channel_id: string | null;
   status_message_id: string | null;
   accepted_job_ids: string | null;
+  job_hour_prefs: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -118,6 +120,7 @@ function mapEntry(row: EntryRow): QueueEntry {
     statusChannelId: row.status_channel_id ?? null,
     statusMessageId: row.status_message_id ?? null,
     acceptedJobIds: parseAcceptedJobIds(row.accepted_job_ids),
+    jobHourPrefs: parseJobHourPrefs(row.job_hour_prefs),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -131,6 +134,27 @@ function parseAcceptedJobIds(raw: string | null | undefined): string[] {
     return parsed.filter((id): id is string => typeof id === "string" && id.length > 0);
   } catch {
     return [];
+  }
+}
+
+function parseJobHourPrefs(raw: string | null | undefined): Record<string, JobHourPref> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const out: Record<string, JobHourPref> = {};
+    for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+      const min = "min" in value ? (value as { min: unknown }).min : null;
+      const max = "max" in value ? (value as { max: unknown }).max : null;
+      out[id] = {
+        min: typeof min === "number" && Number.isFinite(min) ? min : null,
+        max: typeof max === "number" && Number.isFinite(max) ? max : null,
+      };
+    }
+    return out;
+  } catch {
+    return {};
   }
 }
 
@@ -454,7 +478,7 @@ export function insertEntry(
   db: Db,
   entry: Omit<
     QueueEntry,
-    "createdAt" | "updatedAt" | "statusChannelId" | "statusMessageId" | "offerStrikes" | "acceptedJobIds"
+    "createdAt" | "updatedAt" | "statusChannelId" | "statusMessageId" | "offerStrikes" | "acceptedJobIds" | "jobHourPrefs"
   > & {
     createdAt?: string;
     updatedAt?: string;
@@ -586,6 +610,17 @@ export function updateEntryAcceptedJobs(
   db.prepare(
     "UPDATE queue_entries SET accepted_job_ids = ?, updated_at = ? WHERE id = ?",
   ).run(JSON.stringify(queueIds), new Date().toISOString(), entryId);
+  return getEntry(db, entryId)!;
+}
+
+export function updateEntryJobHourPrefs(
+  db: Db,
+  entryId: string,
+  prefs: Record<string, JobHourPref>,
+): QueueEntry {
+  db.prepare(
+    "UPDATE queue_entries SET job_hour_prefs = ?, updated_at = ? WHERE id = ?",
+  ).run(JSON.stringify(prefs), new Date().toISOString(), entryId);
   return getEntry(db, entryId)!;
 }
 

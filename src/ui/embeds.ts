@@ -16,6 +16,7 @@ import type {
   QueueWithCount,
   UserQueueView,
 } from "../types.js";
+import { formatJobHourTag } from "../services/hours.js";
 import {
   formatDuration,
   formatElapsedCompact,
@@ -85,12 +86,15 @@ function jobShortName(job: { name: string }): string {
 }
 
 function queueJobLabel(
-  jobs: Array<{ name: string }>,
+  jobs: Array<{ name: string; hourMin?: number | null; hourMax?: number | null }>,
   totalJobCount: number,
 ): string {
   if (jobs.length === 0) return "-";
-  if (totalJobCount > 0 && jobs.length >= totalJobCount) return "All jobs";
-  const names = jobs.map(jobShortName).filter(Boolean);
+  const tagged = jobs.some((job) => job.hourMin != null || job.hourMax != null);
+  if (!tagged && totalJobCount > 0 && jobs.length >= totalJobCount) return "All jobs";
+  const names = jobs
+    .map((job) => `${jobShortName(job)}${formatJobHourTag(job.hourMin, job.hourMax)}`)
+    .filter(Boolean);
   return names.join(", ") || "-";
 }
 
@@ -508,9 +512,9 @@ export function sendJoOfferResultEmbed(
   }
   return brandEmbed()
     .setColor(INFO_COLOR)
-    .setTitle(`${queueName} J.O. expired`)
+    .setTitle(`${queueName} J.O. skipped`)
     .setDescription(
-      `${offerText}\n\n**No response** — the offer timed out. The next person will be offered.`,
+      `${offerText}\n\n**No response** — this offer was skipped. Two missed DMs move you to the end of the line.`,
     );
 }
 

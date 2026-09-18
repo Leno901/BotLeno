@@ -640,10 +640,10 @@ test("duty line card includes a live updated timestamp", () => {
   assert.equal(embed.color, 0x2dd4bf);
   assert.match(embed.description ?? "", /🟢 𝘓𝘐𝘝𝘌/);
   assert.match(embed.description ?? "", /0 in line • 0 AFK • 0 on duty • Updated <t:\d+:R>/);
-  assert.match(embed.description ?? "", /Qᴜᴇᴜᴇ/);
-  assert.match(embed.description ?? "", /Oɴ ᴅᴜᴛʏ/);
-  assert.match(embed.description ?? "", /\*No one on duty\.\*/);
-  assert.match(embed.description ?? "", /🟢 in line/);
+  assert.equal((embed.description ?? "").includes("Qᴜᴇᴜᴇ"), false);
+  assert.match(embed.description ?? "", /-# Oɴ ᴅᴜᴛʏ/);
+  assert.match(embed.description ?? "", /-# \*No one on duty\.\*/);
+  assert.match(embed.description ?? "", /-# 🟢 in line/);
   assert.match(embed.description ?? "", /🟡 AFK/);
   assert.match(embed.description ?? "", /🔴 on duty/);
   assert.equal(embed.footer?.text, "LenQ • Queue Management");
@@ -691,9 +691,9 @@ test("buildQueueEmbed shares formatEntry for queue and on-duty people", () => {
       },
     ],
   }).toJSON();
-  assert.match(embed.description ?? "", /----------/);
-  assert.match(embed.description ?? "", /Status: 🟡 AFK/);
-  assert.match(embed.description ?? "", /1 Benjo\nStatus: 🔴 On duty/);
+  assert.match(embed.description ?? "", /-# ----------/);
+  assert.match(embed.description ?? "", /-# Status: 🟡 AFK/);
+  assert.match(embed.description ?? "", /-# 1 Benjo\n-# Status: 🔴 On duty/);
   assert.equal(embed.description?.includes("*No one on duty.*"), false);
 });
 

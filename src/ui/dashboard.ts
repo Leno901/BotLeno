@@ -15,7 +15,6 @@ import { dutyDisplayName, dutyStatusBadge, formatDutyLineTable } from "./embeds.
 const QUEUE_EMBED_COLOR = 0x2dd4bf;
 const QUEUE_TITLE = "𝗤𝘂𝗲𝘂𝗲";
 const LIVE_LABEL = "𝘓𝘐𝘝𝘌";
-const QUEUE_SECTION = "Qᴜᴇᴜᴇ";
 const ON_DUTY_SECTION = "Oɴ ᴅᴜᴛʏ";
 const ENTRY_DIVIDER = "----------";
 const QUEUE_CARD_LIMIT = 8;
@@ -110,25 +109,31 @@ function formatEntryList(people: QueueEmbedPerson[]): string {
   return people.map(formatEntry).join(`\n${ENTRY_DIVIDER}\n`);
 }
 
+function smallText(block: string): string {
+  return block
+    .split("\n")
+    .map((line) => (line.length === 0 ? "-#" : `-# ${line}`))
+    .join("\n");
+}
+
 export function buildQueueEmbed(queueData: QueueEmbedData): EmbedBuilder {
   const updatedAt = queueData.updatedAt ?? new Date();
   const unix = Math.floor(updatedAt.getTime() / 1000);
   const queueBody = queueData.queue.length
-    ? `${formatEntryList(queueData.queue)}\n${ENTRY_DIVIDER}`
+    ? smallText(`${formatEntryList(queueData.queue)}\n${ENTRY_DIVIDER}`)
     : "";
-  const onDutyBody = queueData.onDutyList.length
-    ? formatEntryList(queueData.onDutyList)
-    : "*No one on duty.*";
+  const onDutyBody = smallText(
+    queueData.onDutyList.length
+      ? formatEntryList(queueData.onDutyList)
+      : "*No one on duty.*",
+  );
 
   const description = [
     `🟢 ${LIVE_LABEL}`,
     `${queueData.inLine} in line • ${queueData.afk} AFK • ${queueData.onDuty} on duty • Updated <t:${unix}:R>`,
-    QUEUE_SECTION,
     queueBody,
-    "🟢 in line",
-    "🟡 AFK",
-    "🔴 on duty",
-    ON_DUTY_SECTION,
+    smallText("🟢 in line\n🟡 AFK\n🔴 on duty"),
+    smallText(ON_DUTY_SECTION),
     onDutyBody,
   ]
     .filter((block) => block.length > 0)

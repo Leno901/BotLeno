@@ -36,6 +36,7 @@ Paste this as one Discord message (include the ``` lines):
 │ /queue-admin panel skip remove     │
 │ complete move pause resume         │
 │ open close clear                   │
+│ /queue-clear-all                   │
 │ #queue-start  #queue-dashboard     │
 │   no chat, no threads              │
 │ #queue-admin  #queue-logs          │

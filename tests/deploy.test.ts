@@ -27,6 +27,7 @@ test("command payload includes setup and every loaded slash command", () => {
     "myqueue",
     "queue",
     "queue-admin",
+    "queue-clear-all",
     "queue-config",
     "send-jo",
     "setup",
@@ -35,7 +36,7 @@ test("command payload includes setup and every loaded slash command", () => {
 
 test("staff and admin slash commands are hidden from members", () => {
   const commands = commandBodies();
-  const hidden = ["setup", "queue-config", "queue-admin", "send-jo"];
+  const hidden = ["setup", "queue-config", "queue-admin", "queue-clear-all", "send-jo"];
   for (const name of hidden) {
     const command = commands.find((entry) => entry.name === name);
     assert.equal(

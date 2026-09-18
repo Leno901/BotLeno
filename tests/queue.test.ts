@@ -6,6 +6,7 @@ import { MIGRATIONS } from "../src/database/migrations.js";
 import * as store from "../src/database/store.js";
 import { isAppError } from "../src/services/errors.js";
 import {
+  clearAllQueues,
   clearQueue,
   completeEntry,
   expireDue,
@@ -310,6 +311,32 @@ test("skip, complete, clear, and move keep a consistent waiting order", () => {
   });
   assert.equal(cleared.cleared, 2);
   assert.equal(listQueueMembers(db, GUILD, queueId, NOW).entries.length, 0);
+});
+
+test("clearAllQueues removes waiting users from every queue", () => {
+  const db = createTestDb();
+  const pvp = pvpId(db);
+  const dungeon = store.getQueueBySlug(db, GUILD, "dungeon")!.id;
+
+  joinQueue(db, {
+    guildId: GUILD,
+    queueId: pvp,
+    userId: USER_A,
+    hoursInput: "8",
+    now: NOW,
+  });
+  joinQueue(db, {
+    guildId: GUILD,
+    queueId: dungeon,
+    userId: USER_B,
+    hoursInput: "8",
+    now: NOW,
+  });
+
+  const result = clearAllQueues(db, { guildId: GUILD, actorId: "staff", now: NOW });
+  assert.equal(result.cleared, 2);
+  assert.equal(listQueueMembers(db, GUILD, pvp, NOW).entries.length, 0);
+  assert.equal(listQueueMembers(db, GUILD, dungeon, NOW).entries.length, 0);
 });
 
 test("rejects hours above 24 and enforces queue max size", () => {

@@ -134,6 +134,7 @@ If the bot is missing a permission, `/setup` lists the exact name (for example `
 | `/myqueue`      | Everyone   | Position, people ahead, availability, status |
 | `/leavequeue`    | Everyone   | Leave after confirmation |
 | `/queue-admin`  | Staff or Manage Server | Panel, skip, remove, complete, pause, resume, open, close, clear, move, history |
+| `/queue-clear-all` | Staff or Manage Server | Remove every waiting user from every queue |
 | `/send-jo`      | Staff or Manage Server | Offer a J.O. down the READY duty line (20s Yes/No, then next in line) |
 | `/queue-config` | Manage Server | Timezone, multiple-queue setting, staff role, per-queue limits |
 | `/setup`        | Manage Server | Create or repair Discord infrastructure |

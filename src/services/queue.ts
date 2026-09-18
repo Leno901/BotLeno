@@ -691,6 +691,30 @@ export function clearQueue(
   })();
 }
 
+export function clearAllQueues(
+  db: Db,
+  options: { guildId: string; actorId: string; now?: Date },
+): { cleared: number; entries: QueueEntry[] } {
+  const entries: QueueEntry[] = [];
+  const seen = new Set<string>();
+  let cleared = 0;
+  for (const queue of store.listQueues(db, options.guildId)) {
+    const result = clearQueue(db, {
+      guildId: options.guildId,
+      queueId: queue.id,
+      actorId: options.actorId,
+      now: options.now,
+    });
+    cleared += result.cleared;
+    for (const entry of result.entries) {
+      if (seen.has(entry.id)) continue;
+      seen.add(entry.id);
+      entries.push(entry);
+    }
+  }
+  return { cleared, entries };
+}
+
 export function moveEntry(
   db: Db,
   options: {

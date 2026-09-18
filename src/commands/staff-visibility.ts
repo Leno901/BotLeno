@@ -9,6 +9,7 @@ export const STAFF_SLASH_COMMANDS = new Set([
   "setup",
   "queue-config",
   "queue-admin",
+  "queue-clear-all",
   "send-jo",
 ]);
 

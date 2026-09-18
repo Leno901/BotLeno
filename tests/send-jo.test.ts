@@ -12,7 +12,8 @@ import {
 } from "../src/services/queue.js";
 import { validateOfferText, offerDeadlineUnix } from "../src/services/send-jo.js";
 import { SEND_JO_TIMEOUT_MS } from "../src/config/defaults.js";
-import { sendJoOfferEmbed } from "../src/ui/embeds.js";
+import { sendJoOfferEmbed, sendJoOfferResultEmbed } from "../src/ui/embeds.js";
+import { withJoArt } from "../src/ui/jo-art.js";
 import { createTestDb } from "./helpers.js";
 
 const GUILD = "guild-1";
@@ -192,4 +193,28 @@ test("J.O. offer deadline is 30 seconds from send time", () => {
   const embed = sendJoOfferEmbed("PvP", "need a carry", offerDeadlineUnix(now));
   assert.match(embed.data.description ?? "", /<t:\d+:R>/);
   assert.match(embed.data.description ?? "", /<t:\d+:T>/);
+});
+
+test("J.O. offer DM result cards keep the offer text", () => {
+  const accepted = sendJoOfferResultEmbed("Abyss", "a", "accepted");
+  assert.equal(accepted.data.title, "Abyss J.O. accepted");
+  assert.match(accepted.data.description ?? "", /^a\n\n/);
+  assert.match(accepted.data.description ?? "", /ON DUTY/);
+
+  const declined = sendJoOfferResultEmbed("Abyss", "a", "declined");
+  assert.equal(declined.data.title, "Abyss J.O. declined");
+  assert.match(declined.data.description ?? "", /stay in line/);
+
+  const expired = sendJoOfferResultEmbed("Abyss", "a", "timeout");
+  assert.equal(expired.data.title, "Abyss J.O. expired");
+  assert.match(expired.data.description ?? "", /timed out/);
+});
+
+test("J.O. offer cards attach Discord PNG thumbnails", () => {
+  const offer = withJoArt(sendJoOfferEmbed("Abyss", "a", 1_700_000_000), "offer");
+  assert.equal(offer.files.length, 1);
+  assert.equal(offer.embeds[0]?.data.thumbnail?.url, "attachment://jo-offer.png");
+
+  const accepted = withJoArt(sendJoOfferResultEmbed("Abyss", "a", "accepted"), "accepted");
+  assert.equal(accepted.embeds[0]?.data.thumbnail?.url, "attachment://jo-accepted.png");
 });

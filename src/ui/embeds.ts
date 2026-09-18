@@ -276,7 +276,14 @@ export function formatDashboardEntry(
 }
 
 function wrapDutyTable(body: string): string {
-  return `\`\`\`\n${body}\n\`\`\``;
+  return body
+    .split("\n")
+    .map((line) => {
+      if (!line) return line;
+      if (line.startsWith("_") && line.endsWith("_")) return `-# ${line}`;
+      return `-# \`${line}\``;
+    })
+    .join("\n");
 }
 
 export function formatDutyLineTable(
@@ -294,7 +301,7 @@ export function formatDutyLineTable(
     .map((entry) => formatDashboardEntry(entry, timezone, line.jobCount, now))
     .join("\n");
   const extra =
-    line.rows.length > 12 ? `\n_+${line.rows.length - 12} more_` : "";
+    line.rows.length > 12 ? `\n-# _+${line.rows.length - 12} more_` : "";
   return `${wrapDutyTable(`${header}\n${rows}`)}${extra}`;
 }
 
@@ -492,6 +499,33 @@ export function sendJoOfferEmbed(
     .setTitle(`${queueName} J.O. offer`)
     .setDescription(
       `${offerText}\n\nRespond **Yes** or **No** <t:${expiresAtUnix}:R> (deadline <t:${expiresAtUnix}:T>).`,
+    );
+}
+
+export function sendJoOfferResultEmbed(
+  queueName: string,
+  offerText: string,
+  outcome: "accepted" | "declined" | "timeout",
+): EmbedBuilder {
+  if (outcome === "accepted") {
+    return brandEmbed()
+      .setColor(SUCCESS_COLOR)
+      .setTitle(`${queueName} J.O. accepted`)
+      .setDescription(`${offerText}\n\n**Accepted** — you are now ON DUTY.`);
+  }
+  if (outcome === "declined") {
+    return brandEmbed()
+      .setColor(WARNING_COLOR)
+      .setTitle(`${queueName} J.O. declined`)
+      .setDescription(
+        `${offerText}\n\n**Declined** — you stay in line. The next person will be offered.`,
+      );
+  }
+  return brandEmbed()
+    .setColor(INFO_COLOR)
+    .setTitle(`${queueName} J.O. expired`)
+    .setDescription(
+      `${offerText}\n\n**No response** — the offer timed out. The next person will be offered.`,
     );
 }
 

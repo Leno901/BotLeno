@@ -8,7 +8,8 @@ import {
 import * as store from "../database/store.js";
 import type { DutyLineRow } from "../types.js";
 import { sendJoOfferButtons } from "../ui/components.js";
-import { infoEmbed, sendJoOfferEmbed, successEmbed, warningEmbed } from "../ui/embeds.js";
+import { withJoArt } from "../ui/jo-art.js";
+import { infoEmbed, sendJoOfferEmbed, sendJoOfferResultEmbed, successEmbed, warningEmbed } from "../ui/embeds.js";
 import { AppError } from "./errors.js";
 import { logQueueActivity } from "./activity-log.js";
 import { dispatchEntry, nextReadyForJob, recordOfferPass } from "./queue.js";
@@ -230,9 +231,11 @@ async function offerTo(
   tokens.set(chain.token, chain.guildId);
 
   const expiresAt = offerDeadlineUnix();
+  const art = withJoArt(sendJoOfferEmbed(chain.queueName, chain.offerText, expiresAt), "offer");
   const payload = {
     content: `<@${candidate.userId}>`,
-    embeds: [sendJoOfferEmbed(chain.queueName, chain.offerText, expiresAt)],
+    embeds: art.embeds,
+    files: art.files,
     components: [sendJoOfferButtons(chain.token)],
   };
 
@@ -240,6 +243,7 @@ async function offerTo(
     const user = await ctx.client.users.fetch(candidate.userId);
     const dm = await user.send({
       embeds: payload.embeds,
+      files: payload.files,
       components: payload.components,
     });
     chain.offerMessage = { channelId: dm.channelId, messageId: dm.id, via: "dm" };
@@ -281,6 +285,7 @@ async function postPanelFallback(
   payload: {
     content: string;
     embeds: ReturnType<typeof sendJoOfferEmbed>[];
+    files: ReturnType<typeof withJoArt>["files"];
     components: ReturnType<typeof sendJoOfferButtons>[];
   },
 ): Promise<boolean> {
@@ -392,7 +397,7 @@ async function continueAfterReject(
 async function closeOfferMessage(
   ctx: AppContext,
   chain: SendJoChain,
-  _outcome: "accepted" | "declined" | "timeout",
+  outcome: "accepted" | "declined" | "timeout",
 ): Promise<void> {
   const ref = chain.offerMessage;
   chain.offerMessage = null;
@@ -403,7 +408,18 @@ async function closeOfferMessage(
     if (!channel || !channel.isTextBased()) return;
     const message = await channel.messages.fetch(ref.messageId);
     if (ref.via === "dm") {
-      await message.edit({ components: [] }).catch(() => undefined);
+      const art = withJoArt(
+        sendJoOfferResultEmbed(chain.queueName, chain.offerText, outcome),
+        outcome,
+      );
+      await message
+        .edit({
+          embeds: art.embeds,
+          files: art.files,
+          attachments: [],
+          components: [],
+        })
+        .catch(() => undefined);
       return;
     }
     await message.delete().catch(() => undefined);

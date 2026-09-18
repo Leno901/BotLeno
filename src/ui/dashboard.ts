@@ -33,7 +33,7 @@ export function dutyLineDashboardPayload(
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `**${sansItalic("QUEUE")}**\n${formatDutyLineTable(line, timezone, updatedAt)}`,
+        `-# **${sansItalic("QUEUE")}**\n${formatDutyLineTable(line, timezone, updatedAt)}`,
       ),
     )
     .addSeparatorComponents(

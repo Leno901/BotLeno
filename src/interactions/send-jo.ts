@@ -170,6 +170,9 @@ export async function handleSendJoButton(
 ): Promise<void> {
   buttonCooldown(ctx, interaction.user.id);
   try {
+    if (!interaction.message.flags.has(MessageFlags.Ephemeral)) {
+      await interaction.deferUpdate();
+    }
     const result = await resolveSendJo(
       ctx,
       parsed.token,

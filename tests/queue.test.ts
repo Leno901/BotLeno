@@ -473,7 +473,7 @@ test("dashboard queue rows match NAME STATUS HOURS with jobs on a ∟ line", () 
     "Asia/Manila",
     new Date("2026-09-17T00:12:00.000Z"),
   );
-  assert.match(table, /^```\n# NAME/);
+  assert.match(table, new RegExp("^-# `" + "# NAME"));
   assert.match(table, /STATUS/);
   assert.match(table, /HOURS/);
   assert.match(table, /WAIT/);
@@ -604,7 +604,7 @@ test("duty line card includes a live updated timestamp", () => {
   );
   const json = JSON.stringify(payload.components[0]!.toJSON());
   assert.match(json, /Updated <t:\d+:R>/);
-  assert.match(json, new RegExp(`\\*\\*${sansItalic("QUEUE")}\\*\\*`));
+  assert.match(json, new RegExp(`-# \\*\\*${sansItalic("QUEUE")}\\*\\*`));
   assert.match(json, new RegExp(`\\*\\*${sansItalic("On duty")}\\*\\*`));
   assert.match(json, new RegExp(sansItalic("DUTY LINE")));
   assert.match(json, new RegExp(sansItalic("LIVE")));
@@ -676,8 +676,7 @@ test("missing job rows still show the entry's J.O. name", () => {
   const table = formatDutyLineTable(line, "Asia/Manila");
   assert.match(table, /Abyss/);
   assert.match(table, /    ∟ Abyss/);
-  const body = table.slice(4).replace(/\n```[\s\S]*$/, "");
-  const row = body.split("\n")[1] ?? "";
+  const row = table.split("\n")[1] ?? "";
   assert.equal(row.includes("—"), false);
 });
 

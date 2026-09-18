@@ -315,7 +315,7 @@ export function listQueuesWithCounts(db: Db, guildId: string): QueueWithCount[] 
           SELECT COUNT(DISTINCT e.id)
           FROM queue_entries e
           JOIN queue_entry_jobs j ON j.entry_id = e.id
-          WHERE j.queue_id = q.id AND e.status IN ('waiting', 'active')
+          WHERE j.queue_id = q.id AND e.status = 'waiting'
         ) AS waiting_count
        FROM queues q
        WHERE q.guild_id = ?

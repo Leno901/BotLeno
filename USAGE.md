@@ -35,7 +35,7 @@ Paste this as one Discord message (include the ``` lines):
 │ Skip who already has a DM          │
 │ /queue-admin panel skip remove     │
 │ complete move pause resume         │
-│ open close clear                   │
+│ open close clear refresh           │
 │ /queue-clear-all                   │
 │ #queue-start  #queue-dashboard     │
 │   no chat, no threads              │

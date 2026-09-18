@@ -58,6 +58,7 @@ export async function upsertDutyLineMessage(
 export async function refreshGuildDisplays(
   ctx: AppContext,
   guildId: string,
+  options: { forcePanel?: boolean } = {},
 ): Promise<void> {
   const guildConfig = store.getGuild(ctx.db, guildId);
   if (!guildConfig) return;
@@ -83,7 +84,11 @@ export async function refreshGuildDisplays(
         const existing = guildConfig.panelMessageId
           ? await channel.messages.fetch(guildConfig.panelMessageId).catch(() => null)
           : null;
-        if (existing && !shouldRepostPanel(existing.id, channel.lastMessageId)) {
+        if (
+          existing &&
+          !options.forcePanel &&
+          !shouldRepostPanel(existing.id, channel.lastMessageId)
+        ) {
           await withTransientRetry(() => existing.edit(payload));
         } else {
           const message = await withTransientRetry(() => channel.send(payload));

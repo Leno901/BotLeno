@@ -21,6 +21,7 @@ import { errorEmbed, successEmbed, warningEmbed } from "../../ui/embeds.js";
 import { ephemeral, replyAppError, safeReply } from "../../utils/reply.js";
 import { logQueueActivity } from "../../services/activity-log.js";
 import { closeUserStatusChannel } from "../../services/user-status-channel.js";
+import { refreshGuildDisplays } from "../../services/display.js";
 
 function withUser(name: string, description: string) {
   return (sub: SlashCommandSubcommandBuilder) =>
@@ -60,6 +61,11 @@ export const queueAdminCommand: BotCommand = {
     )
     .addSubcommand((sub) =>
       sub.setName("history").setDescription("Show recent queue history"),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("refresh")
+        .setDescription("Repost #queue-start and refresh the dashboard"),
     )
     .addSubcommand(withUser("skip", "Skip a waiting user"))
     .addSubcommand(withUser("remove", "Remove a waiting user"))
@@ -106,6 +112,21 @@ export const queueAdminCommand: BotCommand = {
       }
       if (sub === "history") {
         await showHistory(interaction, ctx);
+        return;
+      }
+      if (sub === "refresh") {
+        await refreshGuildDisplays(ctx, guildId, { forcePanel: true });
+        await safeReply(
+          interaction,
+          ephemeral({
+            embeds: [
+              successEmbed(
+                "Queue start refreshed",
+                "Reposted **#queue-start** and updated the dashboard.",
+              ),
+            ],
+          }),
+        );
         return;
       }
 

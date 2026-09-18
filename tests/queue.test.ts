@@ -13,6 +13,7 @@ import {
   getUserQueueStatus,
   joinQueue,
   leaveQueue,
+  listQueueBoard,
   dispatchNext,
   listDutyLine,
   nextReadyForJob,
@@ -1085,6 +1086,10 @@ test("on-duty people leave the waiting table but stay in the on-duty block", () 
   assert.equal(line.rows[0]?.position, 1);
   assert.equal(line.onDuty[0]?.userId, USER_A);
   assert.equal(line.inLine, 1);
+  assert.equal(
+    listQueueBoard(db, GUILD, NOW).find((queue) => queue.id === queueId)?.waitingCount,
+    1,
+  );
 });
 
 test("manual declines do not requeue; two missed DMs move to the end", () => {

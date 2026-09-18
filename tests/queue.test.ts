@@ -636,14 +636,18 @@ test("duty line card includes a live updated timestamp", () => {
     at,
   );
   const embed = payload.embeds[0]!.toJSON();
-  assert.equal(embed.title, "𝗤𝘂𝗲𝘂𝗲");
-  assert.equal(embed.color, 0x2dd4bf);
-  assert.match(embed.description ?? "", /🟢 𝘓𝘐𝘝𝘌/);
+  assert.equal(embed.title, "Queue");
+  assert.equal(embed.color, 0x14b8a6);
+  assert.match(embed.description ?? "", /🟢 \*\*LIVE\*\*/);
   assert.match(embed.description ?? "", /0 in line • 0 AFK • 0 on duty • Updated <t:\d+:R>/);
+  assert.match(embed.description ?? "", /\*\*IN LINE\*\*/);
+  assert.match(embed.description ?? "", /```\nNobody is in line\.\n```/);
+  assert.match(embed.description ?? "", /\*\*ON DUTY\*\*/);
+  assert.match(embed.description ?? "", /\*No one on duty\.\*/);
+  assert.match(embed.description ?? "", /-# 🟢 in line • 🟡 AFK • 🔴 on duty/);
+  assert.equal((embed.description ?? "").includes("----------"), false);
+  assert.equal((embed.description ?? "").includes("𝗤𝘂𝗲𝘂𝗲"), false);
   assert.equal((embed.description ?? "").includes("Qᴜᴇᴜᴇ"), false);
-  assert.match(embed.description ?? "", /-# Oɴ ᴅᴜᴛʏ/);
-  assert.match(embed.description ?? "", /-# \*No one on duty\.\*/);
-  assert.match(embed.description ?? "", /-# 🟢 in line/);
   assert.match(embed.description ?? "", /🟡 AFK/);
   assert.match(embed.description ?? "", /🔴 on duty/);
   assert.equal(embed.footer?.text, "LenQ • Queue Management");
@@ -691,9 +695,10 @@ test("buildQueueEmbed shares formatEntry for queue and on-duty people", () => {
       },
     ],
   }).toJSON();
-  assert.match(embed.description ?? "", /-# ----------/);
-  assert.match(embed.description ?? "", /-# Status: 🟡 AFK/);
-  assert.match(embed.description ?? "", /-# 1 Benjo\n-# Status: 🔴 On duty/);
+  assert.match(embed.description ?? "", /```\n1 Vy\nStatus: 🟢 In line/);
+  assert.match(embed.description ?? "", /Wait: 37m\n\n2 Leno\nStatus: 🟡 AFK/);
+  assert.match(embed.description ?? "", /```\n1 Benjo\nStatus: 🔴 On duty/);
+  assert.equal(embed.description?.includes("----------"), false);
   assert.equal(embed.description?.includes("*No one on duty.*"), false);
 });
 

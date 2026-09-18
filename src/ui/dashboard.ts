@@ -1,6 +1,5 @@
 import {
   ContainerBuilder,
-  EmbedBuilder,
   MessageFlags,
   SeparatorBuilder,
   SeparatorSpacingSize,
@@ -10,13 +9,13 @@ import { BRAND_COLOR } from "../config/defaults.js";
 import type { DutyLine, DutyLineRow, DutyStatus } from "../types.js";
 import { discordTimestamp } from "../services/time.js";
 import { userStatusButtons } from "./components.js";
-import { dutyDisplayName, dutyStatusBadge, formatDutyLineTable } from "./embeds.js";
+import {
+  brandEmbed,
+  dutyDisplayName,
+  dutyStatusBadge,
+  formatDutyLineTable,
+} from "./embeds.js";
 
-const QUEUE_EMBED_COLOR = 0x2dd4bf;
-const QUEUE_TITLE = "𝗤𝘂𝗲𝘂𝗲";
-const LIVE_LABEL = "𝘓𝘐𝘝𝘌";
-const ON_DUTY_SECTION = "Oɴ ᴅᴜᴛʏ";
-const ENTRY_DIVIDER = "----------";
 const QUEUE_CARD_LIMIT = 8;
 
 export interface QueueEmbedPerson {
@@ -106,44 +105,39 @@ export function formatEntry(person: QueueEmbedPerson): string {
 }
 
 function formatEntryList(people: QueueEmbedPerson[]): string {
-  return people.map(formatEntry).join(`\n${ENTRY_DIVIDER}\n`);
+  return people.map(formatEntry).join("\n\n");
 }
 
-function smallText(block: string): string {
-  return block
-    .split("\n")
-    .map((line) => (line.length === 0 ? "-#" : `-# ${line}`))
-    .join("\n");
+function boxed(body: string): string {
+  return `\`\`\`\n${body}\n\`\`\``;
 }
 
 export function buildQueueEmbed(queueData: QueueEmbedData): EmbedBuilder {
   const updatedAt = queueData.updatedAt ?? new Date();
   const unix = Math.floor(updatedAt.getTime() / 1000);
-  const queueBody = queueData.queue.length
-    ? smallText(`${formatEntryList(queueData.queue)}\n${ENTRY_DIVIDER}`)
-    : "";
-  const onDutyBody = smallText(
-    queueData.onDutyList.length
-      ? formatEntryList(queueData.onDutyList)
-      : "*No one on duty.*",
+  const queueBox = boxed(
+    queueData.queue.length ? formatEntryList(queueData.queue) : "Nobody is in line.",
   );
+  const onDutyBox = queueData.onDutyList.length
+    ? boxed(formatEntryList(queueData.onDutyList))
+    : "*No one on duty.*";
 
-  const description = [
-    `🟢 ${LIVE_LABEL}`,
-    `${queueData.inLine} in line • ${queueData.afk} AFK • ${queueData.onDuty} on duty • Updated <t:${unix}:R>`,
-    queueBody,
-    smallText("🟢 in line\n🟡 AFK\n🔴 on duty"),
-    smallText(ON_DUTY_SECTION),
-    onDutyBody,
-  ]
-    .filter((block) => block.length > 0)
-    .join("\n");
-
-  return new EmbedBuilder()
-    .setTitle(QUEUE_TITLE)
-    .setColor(QUEUE_EMBED_COLOR)
-    .setDescription(description)
-    .setFooter({ text: "LenQ • Queue Management" })
+  return brandEmbed()
+    .setTitle("Queue")
+    .setDescription(
+      [
+        `🟢 **LIVE**`,
+        `${queueData.inLine} in line • ${queueData.afk} AFK • ${queueData.onDuty} on duty • Updated <t:${unix}:R>`,
+        "",
+        "**IN LINE**",
+        queueBox,
+        "",
+        "**ON DUTY**",
+        onDutyBox,
+        "",
+        "-# 🟢 in line • 🟡 AFK • 🔴 on duty",
+      ].join("\n"),
+    )
     .setTimestamp(updatedAt);
 }
 

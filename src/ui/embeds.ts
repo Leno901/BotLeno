@@ -17,10 +17,9 @@ import type {
   UserQueueView,
 } from "../types.js";
 import {
-  formatCompactHours,
+  formatClock,
   formatDuration,
   formatInTimeZone,
-  formatTableDate,
 } from "../services/time.js";
 
 export function queueStatusLabel(status: QueueStatus): string {
@@ -71,32 +70,37 @@ export function dutyStatusBadge(status: DutyStatus): string {
 }
 
 const NBSP = "\u00a0";
-const SLOT_WIDTH = 2;
-const NAME_WIDTH = 8;
-const STATUS_WIDTH = 7;
-const HOURS_WIDTH = 6;
-const ADDED_WIDTH = 6;
-const JOBS_MIN_WIDTH = 4;
-const COL_GAP = "  ";
-const ROW_CAP = 56;
-const PREFIX_WIDTH =
-  SLOT_WIDTH +
-  NAME_WIDTH +
-  STATUS_WIDTH +
-  HOURS_WIDTH +
-  ADDED_WIDTH +
-  COL_GAP.length * 5;
-const JOBS_WIDTH = ROW_CAP - PREFIX_WIDTH;
+const NAME_WIDTH = 10;
+const STATUS_WIDTH = 9;
 
-const TABLE_JOB_LABELS: Record<string, string> = {
-  pvp: "PvP",
-  dungeon: "Dun",
-  abyss: "Aby",
-  "pet-farm": "Pet",
-  "pet farm": "Pet",
-  "exploration-leveling": "Exp",
-  "exploration/leveling": "Exp",
-};
+function lineStatusText(status: DutyStatus): string {
+  if (status === "on_duty") return "On duty";
+  if (status === "afk") return "AFK";
+  return "In line";
+}
+
+function formatHoursSample(hours: number | null): string {
+  if (hours == null) return `${"-".padStart(5)} `;
+  return `${hours.toFixed(1).padStart(5)}h`;
+}
+
+function jobShortName(job: { name: string }): string {
+  const name = asciiText(job.name) || job.name;
+  const slash = name.indexOf("/");
+  return slash > 0 ? name.slice(0, slash).trim() : name;
+}
+
+function jobArrowLine(
+  jobs: Array<{ name: string }>,
+  totalJobCount: number,
+): string {
+  if (jobs.length === 0) return "    ↳ -";
+  const names = jobs.map(jobShortName).filter(Boolean);
+  if (totalJobCount > 0 && names.length >= totalJobCount) {
+    return `    ↳ ${names.join(", ")}`;
+  }
+  return `    ↳ ${names.join(", ") || "-"}`;
+}
 
 export function padMono(value: string, width: number): string {
   const clipped =
@@ -105,12 +109,8 @@ export function padMono(value: string, width: number): string {
 }
 
 export const DUTY_LINE_COLUMNS = {
-  slot: SLOT_WIDTH,
   name: NAME_WIDTH,
   status: STATUS_WIDTH,
-  hours: HOURS_WIDTH,
-  added: ADDED_WIDTH,
-  jobs: JOBS_WIDTH,
 } as const;
 
 const ZERO_WIDTH = /[\u200B-\u200D\uFEFF\u2060]/g;
@@ -160,52 +160,6 @@ export function pickDiscordDisplayName(source: {
   return "User";
 }
 
-function tableJobLabel(job: { name: string; slug?: string }): string {
-  const slug = asciiText(job.slug ?? "").toLowerCase();
-  const name = asciiText(job.name);
-  const nameKey = name.toLowerCase();
-  return TABLE_JOB_LABELS[slug] ?? TABLE_JOB_LABELS[nameKey] ?? name.slice(0, 3);
-}
-
-function joinJobLabels(labels: string[], maxWidth: number): string {
-  if (labels.length === 0) return "-";
-  const spaced = labels.join(", ");
-  if (spaced.length <= maxWidth) return spaced;
-  const compact = labels.join(",");
-  if (compact.length <= maxWidth) return compact;
-  if (maxWidth <= 3) return compact.slice(0, maxWidth);
-  return `${compact.slice(0, maxWidth - 3)}...`;
-}
-
-export function formatTableJobNames(
-  jobs: Array<{ name: string; slug?: string }>,
-  totalJobCount: number,
-): string {
-  if (jobs.length === 0) return "-";
-  if (totalJobCount > 0 && jobs.length >= totalJobCount) return "All";
-  const labels = jobs.map(tableJobLabel).filter(Boolean);
-  return joinJobLabels(labels, JOBS_WIDTH);
-}
-
-function jobsRemainder(value: string): string {
-  const clean = asciiText(value).replace(/[\r\n]/g, "") || "-";
-  if (clean.length > JOBS_WIDTH) {
-    if (JOBS_WIDTH <= 3) return clean.slice(0, JOBS_WIDTH);
-    return `${clean.slice(0, JOBS_WIDTH - 3)}...`;
-  }
-  if (clean.length < JOBS_MIN_WIDTH) {
-    return clean.padEnd(JOBS_MIN_WIDTH, " ");
-  }
-  return clean;
-}
-
-export function formatTableJobs(
-  jobs: Array<{ name: string; slug?: string }>,
-  totalJobCount: number,
-): string {
-  return jobsRemainder(formatTableJobNames(jobs, totalJobCount));
-}
-
 export function dutyDisplayName(entry: {
   userId: string;
   displayName?: string | null;
@@ -216,25 +170,8 @@ export function dutyDisplayName(entry: {
   return pickDiscordDisplayName(entry);
 }
 
-function formatHoursCell(entry: DutyLineRow): string {
-  const compact =
-    entry.durationHours == null ? "-" : formatCompactHours(entry.durationHours);
-  return tableCell(compact, HOURS_WIDTH);
-}
-
-function formatAddedCell(entry: DutyLineRow, timezone: string): string {
-  return tableCell(formatTableDate(entry.availableFrom, timezone), ADDED_WIDTH);
-}
-
-export function formatDutyLineHeader(_nameWidth = NAME_WIDTH): string {
-  return [
-    tableCell("#", SLOT_WIDTH),
-    tableCell("NAME", NAME_WIDTH),
-    tableCell("STATUS", STATUS_WIDTH),
-    tableCell("HOURS", HOURS_WIDTH),
-    tableCell("ADDED", ADDED_WIDTH),
-    jobsRemainder("JOBS"),
-  ].join(COL_GAP);
+export function formatDutyLineHeader(): string {
+  return `${"#".padEnd(2)} ${"NAME".padEnd(NAME_WIDTH)} ${"STATUS".padEnd(STATUS_WIDTH)} HOURS`;
 }
 
 export function formatJobList(
@@ -321,22 +258,15 @@ export function queuePanelEmbed(queues: QueueWithCount[]): EmbedBuilder {
 
 export function formatDashboardEntry(
   entry: DutyLineRow,
-  timezone: string,
+  _timezone: string,
   totalJobCount: number,
-  _nameWidth = NAME_WIDTH,
 ): string {
-  const slot = String(entry.position).padStart(SLOT_WIDTH, "0");
-  return [
-    tableCell(slot, SLOT_WIDTH),
-    tableCell(dutyDisplayName(entry), NAME_WIDTH),
-    tableCell(dutyStatusText(entry.status), STATUS_WIDTH),
-    formatHoursCell(entry),
-    formatAddedCell(entry, timezone),
-    formatTableJobs(entry.jobs, totalJobCount),
-  ]
-    .join(COL_GAP)
-    .replace(/[\r\n]/g, "")
-    .slice(0, ROW_CAP);
+  const slot = String(entry.position).padEnd(2);
+  const name = tableCell(dutyDisplayName(entry), NAME_WIDTH);
+  const status = tableCell(lineStatusText(entry.status), STATUS_WIDTH);
+  const hours = formatHoursSample(entry.durationHours);
+  const row = `${slot} ${name} ${status} ${hours}`;
+  return `${row}\n${jobArrowLine(entry.jobs, totalJobCount)}`;
 }
 
 function wrapDutyTable(body: string): string {
@@ -347,7 +277,7 @@ export function formatDutyLineTable(line: DutyLine, timezone: string): string {
   const visible = line.rows.slice(0, 12);
   const header = formatDutyLineHeader();
   if (visible.length === 0) {
-    return `${wrapDutyTable(header)}\n_Nobody is in the duty line._`;
+    return wrapDutyTable(`${header}\n_Nobody is in the duty line._`);
   }
 
   const rows = visible
@@ -358,14 +288,21 @@ export function formatDutyLineTable(line: DutyLine, timezone: string): string {
   return `${wrapDutyTable(`${header}\n${rows}`)}${extra}`;
 }
 
-export function formatOnDutyBody(line: DutyLine): string {
-  if (line.onDuty.length === 0) return "_No one on duty._";
-  return line.onDuty
-    .map(
-      (row) =>
-        `**ON DUTY**  <@${row.userId}> · ${formatJobList(row.jobs, line.jobCount)}`,
-    )
-    .join("\n");
+export function formatOnDutyBody(line: DutyLine, timezone: string): string {
+  const header = `${"NAME".padEnd(12)} ${"LOCATION".padEnd(12)} SINCE`;
+  if (line.onDuty.length === 0) {
+    return wrapDutyTable(`${header}\n_No one on duty._`);
+  }
+  const rows = line.onDuty.map((row) => {
+    const name = tableCell(`@${dutyDisplayName(row)}`, 12);
+    const location = tableCell(
+      jobShortName(row.jobs[0] ?? { name: "-" }),
+      12,
+    );
+    const since = formatClock(row.updatedAt ?? row.availableFrom, timezone);
+    return `${name} ${location} ${since}`;
+  });
+  return wrapDutyTable(`${header}\n${rows.join("\n")}`);
 }
 
 export function availabilityFields(

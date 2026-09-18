@@ -392,7 +392,7 @@ async function continueAfterReject(
 async function closeOfferMessage(
   ctx: AppContext,
   chain: SendJoChain,
-  outcome: "accepted" | "declined" | "timeout",
+  _outcome: "accepted" | "declined" | "timeout",
 ): Promise<void> {
   const ref = chain.offerMessage;
   chain.offerMessage = null;
@@ -402,21 +402,7 @@ async function closeOfferMessage(
     const channel = await ctx.client.channels.fetch(ref.channelId);
     if (!channel || !channel.isTextBased()) return;
     const message = await channel.messages.fetch(ref.messageId);
-    if (ref.via === "panel") {
-      await message.delete().catch(() => undefined);
-      return;
-    }
-    const title =
-      outcome === "accepted"
-        ? "J.O. accepted"
-        : outcome === "declined"
-          ? "J.O. declined"
-          : "J.O. offer expired";
-    await message.edit({
-      content: "",
-      embeds: [infoEmbed(title, "This offer is closed.")],
-      components: [],
-    });
+    await message.delete().catch(() => undefined);
   } catch {
     // Offer message may already be gone.
   }

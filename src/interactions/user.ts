@@ -32,7 +32,7 @@ import {
   queueSelectRow,
   userQueueButtons,
 } from "../ui/components.js";
-import { ephemeral, replyAppError, safeReply } from "../utils/reply.js";
+import { ephemeral, replyAppError, safeReply, scheduleEphemeralDelete } from "../utils/reply.js";
 import type { ModalSubmitInteraction } from "discord.js";
 import { logQueueActivity } from "../services/activity-log.js";
 import {
@@ -317,6 +317,7 @@ export async function handleLeaveConfirm(
         components: [],
       }),
     );
+    scheduleEphemeralDelete(interaction);
     if (interaction.guild) {
       await closeUserStatusChannel(ctx, interaction.guild, view.entry).catch(
         () => undefined,
@@ -336,10 +337,30 @@ export async function handleLeaveConfirm(
 
 export async function handleLeaveCancel(
   interaction: ButtonInteraction,
+  ctx: AppContext,
 ): Promise<void> {
+  const guildId = requireGuildId(interaction);
+  const view = getUserQueueStatus(ctx.db, guildId, interaction.user.id);
+  if (!view) {
+    await safeReply(
+      interaction,
+      ephemeral({ embeds: [infoEmbed("Stay in line", "You are still in the duty line.")] }),
+    );
+    scheduleEphemeralDelete(interaction);
+    return;
+  }
   await safeReply(
     interaction,
-    ephemeral({ embeds: [infoEmbed("Stay in line", "You are still in the duty line.")] }),
+    ephemeral({
+      embeds: [userStatusEmbed(view, timezone(ctx, guildId))],
+      components: [
+        userQueueButtons(
+          view.queue.allowLeave,
+          view.entry.isAfk,
+          view.entry.status === "active",
+        ),
+      ],
+    }),
   );
 }
 

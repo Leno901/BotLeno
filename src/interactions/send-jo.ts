@@ -1,5 +1,6 @@
-import type {
-  ButtonInteraction,
+import {
+  MessageFlags,
+  type ButtonInteraction,
   ChatInputCommandInteraction,
   ModalSubmitInteraction,
   StringSelectMenuInteraction,
@@ -175,6 +176,9 @@ export async function handleSendJoButton(
       interaction.user.id,
       parsed.accepted,
     );
+    if (!interaction.message.flags.has(MessageFlags.Ephemeral)) {
+      return;
+    }
     await safeReply(
       interaction,
       ephemeral({

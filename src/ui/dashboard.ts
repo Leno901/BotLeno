@@ -7,7 +7,7 @@ import {
 } from "discord.js";
 import { BRAND_COLOR } from "../config/defaults.js";
 import type { DutyLine, DutyLineRow } from "../types.js";
-import { discordTimestamp } from "../services/time.js";
+import { discordTimestamp, formatClock } from "../services/time.js";
 import { userStatusButtons } from "./components.js";
 import { dutyStatusBadge, formatDutyLineTable, formatOnDutyBody } from "./embeds.js";
 
@@ -22,9 +22,8 @@ export function dutyLineDashboardPayload(
       new TextDisplayBuilder().setContent(
         [
           "## DUTY LINE",
-          "🟢 **LIVE**",
-          `${line.inLine} in line • ${line.afkCount} AFK • ${line.onDutyCount} on duty`,
-          `Updated: ${discordTimestamp(updatedAt, "R")}`,
+          `🟢 **LIVE**`,
+          `${line.inLine} in line • ${line.afkCount} AFK • ${line.onDutyCount} on duty • Updated ${discordTimestamp(updatedAt, "R")}`,
         ].join("\n"),
       ),
     )
@@ -32,18 +31,22 @@ export function dutyLineDashboardPayload(
       new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small),
     )
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(formatDutyLineTable(line, timezone)),
+      new TextDisplayBuilder().setContent(
+        `**QUEUE**\n${formatDutyLineTable(line, timezone)}`,
+      ),
     )
     .addSeparatorComponents(
       new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small),
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `**On duty**\n${formatOnDutyBody(line)}`,
+        `**ON DUTY**\n${formatOnDutyBody(line, timezone)}`,
       ),
     )
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent("-# BotLenoAPP • Queue Management"),
+      new TextDisplayBuilder().setContent(
+        `-# BotLenoAPP • Queue Management · ${formatClock(updatedAt, timezone)}`,
+      ),
     );
 
   return {

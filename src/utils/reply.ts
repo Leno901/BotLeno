@@ -2,8 +2,10 @@ import {
   MessageFlags,
   type Interaction,
   type InteractionReplyOptions,
+  type MessageComponentInteraction,
 } from "discord.js";
 import { isUnknownInteraction } from "../app-context.js";
+import { EPHEMERAL_AUTO_DELETE_MS } from "../config/defaults.js";
 import type { Logger } from "../logger.js";
 import { isAppError } from "../services/errors.js";
 import { errorEmbed, warningEmbed } from "../ui/embeds.js";
@@ -16,12 +18,40 @@ export function ephemeral(
   return { ...options, flags: MessageFlags.Ephemeral };
 }
 
+export function canUpdateEphemeral(interaction: Interaction): boolean {
+  return (
+    interaction.isMessageComponent() &&
+    !interaction.replied &&
+    !interaction.deferred &&
+    interaction.message.flags.has(MessageFlags.Ephemeral)
+  );
+}
+
+export function scheduleEphemeralDelete(
+  interaction: Interaction,
+  delayMs = EPHEMERAL_AUTO_DELETE_MS,
+): void {
+  if (!interaction.isRepliable()) return;
+  setTimeout(() => {
+    void interaction.deleteReply().catch(() => undefined);
+  }, delayMs);
+}
+
 export async function safeReply(
   interaction: Interaction,
   options: InteractionReplyOptions,
 ): Promise<void> {
   if (!interaction.isRepliable()) return;
   try {
+    if (canUpdateEphemeral(interaction)) {
+      const component = interaction as MessageComponentInteraction;
+      await component.update({
+        content: options.content ?? null,
+        embeds: options.embeds ?? [],
+        components: options.components ?? [],
+      });
+      return;
+    }
     if (interaction.deferred || interaction.replied) {
       await interaction.followUp(options);
       return;

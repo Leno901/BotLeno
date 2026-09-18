@@ -54,7 +54,7 @@ export async function handleButton(
         await handleLeaveConfirm(interaction, ctx);
         return;
       case Ids.leaveCancel:
-        await handleLeaveCancel(interaction);
+        await handleLeaveCancel(interaction, ctx);
         return;
       default: {
         const sendJo = parseSendJoButton(interaction.customId);

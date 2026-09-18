@@ -15,7 +15,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node index.js",
-    "test": "node --import tsx --test tests/hours.test.ts tests/time.test.ts tests/queue.test.ts tests/permissions.test.ts tests/setup-plan.test.ts tests/cooldown.test.ts tests/send-jo.test.ts tests/logs.test.ts tests/display.test.ts tests/deploy.test.ts",
+    "test": "node --import tsx --test tests/hours.test.ts tests/time.test.ts tests/queue.test.ts tests/permissions.test.ts tests/setup-plan.test.ts tests/cooldown.test.ts tests/send-jo.test.ts tests/logs.test.ts tests/display.test.ts tests/deploy.test.ts tests/reply.test.ts",
     "lint": "eslint src tests",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "deploy": "tsx src/deploy-commands.ts"

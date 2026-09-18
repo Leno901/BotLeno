@@ -104,6 +104,7 @@ export interface DutyLineRow {
   durationHours: number | null;
   availableFrom: string;
   availableUntil: string | null;
+  updatedAt?: string;
   displayName?: string;
 }
 

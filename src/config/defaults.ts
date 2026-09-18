@@ -68,6 +68,7 @@ export const PANEL_DEBOUNCE_MS = 1200;
 export const SEND_JO_TIMEOUT_MS = 30_000;
 export const SEND_JO_STRIKES_TO_REQUEUE = 2;
 export const SEND_JO_OFFER_MAX_LENGTH = 1000;
+export const EPHEMERAL_AUTO_DELETE_MS = 5_000;
 
 export const BOT_PERMISSIONS =
   PermissionFlagsBits.ViewChannel |

@@ -284,6 +284,7 @@ function toDutyRow(db: Db, entry: QueueEntry): DutyLineRow {
     durationHours: entry.durationHours,
     availableFrom: entry.createdAt,
     availableUntil: entry.availableUntil,
+    updatedAt: entry.updatedAt,
   };
 }
 

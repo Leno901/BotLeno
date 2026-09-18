@@ -46,14 +46,8 @@ test("pickReadyForJob skips AFK, on-duty, wrong job, then exhausted", () => {
   assert.equal(pickReadyForJob(rows, "pvp", ["d", "e"]), null);
   assert.equal(pickReadyForJob(rows, "dungeon")?.entryId, "c");
   assert.equal(pickReadyForJob(rows, "abyss"), null);
-  assert.equal(pickReadyForJob(rows, ["pvp", "dungeon"]), null);
-  assert.equal(
-    pickReadyForJob(
-      [...rows, { entryId: "f", status: "ready" as const, jobs: [{ id: "pvp" }, { id: "dungeon" }] }],
-      ["pvp", "dungeon"],
-    )?.entryId,
-    "f",
-  );
+  assert.equal(pickReadyForJob(rows, ["pvp", "dungeon"])?.entryId, "c");
+  assert.equal(pickReadyForJob(rows, ["pvp", "dungeon"], ["c"])?.entryId, "d");
 });
 
 test("nextReadyForJob walks the duty line in order", () => {
@@ -99,6 +93,34 @@ test("nextReadyForJob walks the duty line in order", () => {
 
   const exhausted = nextReadyForJob(db, GUILD, pvp, [b.entry.id, d.entry.id], NOW);
   assert.equal(exhausted, null);
+});
+
+test("nextReadyForJob offers to anyone matching any selected J.O.", () => {
+  const db = createTestDb();
+  store.ensureGuild(db, GUILD);
+  const abyss = store.getQueueBySlug(db, GUILD, "abyss")!.id;
+  const explo = store.getQueueBySlug(db, GUILD, "exploration-leveling")!.id;
+
+  const firstJoin = joinQueue(db, {
+    guildId: GUILD,
+    queueId: abyss,
+    userId: USER_A,
+    hoursInput: "8",
+    now: NOW,
+  });
+  joinQueue(db, {
+    guildId: GUILD,
+    queueId: explo,
+    userId: USER_B,
+    hoursInput: "8",
+    now: NOW,
+  });
+
+  const first = nextReadyForJob(db, GUILD, [abyss, explo], [], NOW);
+  assert.equal(first?.userId, USER_A);
+
+  const second = nextReadyForJob(db, GUILD, [abyss, explo], [firstJoin.entry.id], NOW);
+  assert.equal(second?.userId, USER_B);
 });
 
 test("dispatchEntry activates a specific READY user, not global #1", () => {
@@ -165,6 +187,35 @@ test("dispatchEntry stores the accepted J.O.s, not every queued job", () => {
   assert.equal(line.onDuty[0]?.jobs.length, 2);
 });
 
+test("dispatchEntry accepts the overlapping J.O.s when several were offered", () => {
+  const db = createTestDb();
+  store.ensureGuild(db, GUILD);
+  const abyss = store.getQueueBySlug(db, GUILD, "abyss")!.id;
+  const explo = store.getQueueBySlug(db, GUILD, "exploration-leveling")!.id;
+
+  const a = joinQueue(db, {
+    guildId: GUILD,
+    queueId: abyss,
+    userId: USER_A,
+    hoursInput: "8",
+    now: NOW,
+  });
+
+  dispatchEntry(db, {
+    guildId: GUILD,
+    entryId: a.entry.id,
+    actorId: "staff",
+    queueIds: [abyss, explo],
+    now: NOW,
+  });
+
+  const line = listDutyLine(db, GUILD, NOW);
+  assert.deepEqual(
+    line.onDuty[0]?.acceptedJobs?.map((job) => job.id),
+    [abyss],
+  );
+});
+
 test("dispatchEntry rejects AFK and on-duty users", () => {
   const db = createTestDb();
   const { pvp } = ids(db);
@@ -223,10 +274,10 @@ test("validateOfferText trims and rejects empty or oversized text", () => {
   );
 });
 
-test("J.O. offer deadline is 30 seconds from send time", () => {
-  assert.equal(SEND_JO_TIMEOUT_MS, 30_000);
+test("J.O. offer deadline is 20 seconds from send time", () => {
+  assert.equal(SEND_JO_TIMEOUT_MS, 20_000);
   const now = 1_000_000_000_000;
-  assert.equal(offerDeadlineUnix(now), Math.floor((now + 30_000) / 1000));
+  assert.equal(offerDeadlineUnix(now), Math.floor((now + 20_000) / 1000));
   const embed = sendJoOfferEmbed("PvP", "need a carry", offerDeadlineUnix(now));
   assert.match(embed.data.description ?? "", /<t:\d+:R>/);
   assert.match(embed.data.description ?? "", /<t:\d+:T>/);

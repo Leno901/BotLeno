@@ -378,8 +378,8 @@ function offeredQueueIds(queueId: string | readonly string[]): string[] {
   return [...new Set(Array.isArray(queueId) ? queueId : [queueId])].filter(Boolean);
 }
 
-function hasOfferedJobs(jobs: Array<{ id: string }>, queueIds: readonly string[]): boolean {
-  return queueIds.every((id) => jobs.some((job) => job.id === id));
+function hasAnyOfferedJob(jobs: Array<{ id: string }>, queueIds: readonly string[]): boolean {
+  return queueIds.some((id) => jobs.some((job) => job.id === id));
 }
 
 export function pickReadyForJob<
@@ -397,7 +397,7 @@ export function pickReadyForJob<
       (row) =>
         row.status === "ready" &&
         !skip.has(row.entryId) &&
-        hasOfferedJobs(row.jobs, needed),
+        hasAnyOfferedJob(row.jobs, needed),
     ) ?? null
   );
 }
@@ -435,10 +435,10 @@ export function dispatchEntry(
     }
     const jobs = store.listEntryJobs(db, entry.id);
     const offered = offeredQueueIds(options.queueIds ?? (options.queueId ? [options.queueId] : []));
-    if (offered.length > 0 && !hasOfferedJobs(jobs, offered)) {
+    const accepted = offered.filter((id) => jobs.some((job) => job.id === id));
+    if (offered.length > 0 && accepted.length === 0) {
       throw new AppError("That user is not queued for this J.O.", "NOT_READY");
     }
-    const accepted = offered.filter((id) => jobs.some((job) => job.id === id));
     if (accepted.length > 0) {
       store.updateEntryAcceptedJobs(db, entry.id, accepted);
     }

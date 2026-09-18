@@ -70,12 +70,12 @@ test("does not delete the old dashboard if posting the new one fails", async () 
   let deleted = false;
   const existing = {
     id: "old-msg",
-    flags: { has: (flag: number) => flag !== MessageFlags.IsComponentsV2 },
+    flags: { has: (flag: number) => flag === MessageFlags.IsComponentsV2 },
     delete: async () => {
       deleted = true;
     },
     edit: async () => {
-      throw new Error("should not edit embed dashboard");
+      throw new Error("should not edit a Components V2 dashboard");
     },
   };
   const channel = {

@@ -23,8 +23,7 @@ import {
   pickReadyForJob,
 } from "../src/services/queue.js";
 import { formatDashboardEntry, formatDutyLineTable, formatJobList, formatJobTable, formatOnDutyBody, formatQueuePanelLines, joinedEmbed, pickDiscordDisplayName, queuePanelEmbed } from "../src/ui/embeds.js";
-import { dutyLineDashboardPayload } from "../src/ui/dashboard.js";
-import { doubleStruck, sansItalic } from "../src/ui/text-style.js";
+import { buildQueueEmbed, dutyLineDashboardPayload, formatEntry } from "../src/ui/dashboard.js";
 import { userQueueButtons } from "../src/ui/components.js";
 import { personalStatusChannelName, isPersonalStatusChannelName, personalStatusOverwrites, statusCategoryOverwrites } from "../src/services/user-status-channel.js";
 import { PERSONAL_STATUS_CHANNELS_ENABLED } from "../src/config/defaults.js";
@@ -636,18 +635,66 @@ test("duty line card includes a live updated timestamp", () => {
     "Asia/Manila",
     at,
   );
-  const json = JSON.stringify(payload.components[0]!.toJSON());
-  assert.match(json, /Updated <t:\d+:R>/);
-  assert.match(json, new RegExp(`-# \\*\\*${sansItalic("QUEUE")}\\*\\*`));
-  assert.match(json, new RegExp(`\\*\\*${sansItalic("On duty")}\\*\\*`));
-  assert.match(json, new RegExp(doubleStruck("Queue")));
-  assert.match(json, new RegExp(sansItalic("LIVE")));
-  assert.match(json, new RegExp(sansItalic("LenQ")));
-  assert.equal(json.includes("BotLenoAPP"), false);
-  assert.match(json, /in line • 0 AFK • 0 on duty\\nUpdated <t:\d+:R>/);
-  assert.match(json, /_Nobody is in the duty line\._/);
-  assert.match(json, /_No one on duty\._/);
-  assert.match(json, /🟢 in line/);
+  const embed = payload.embeds[0]!.toJSON();
+  assert.equal(embed.title, "𝗤𝘂𝗲𝘂𝗲");
+  assert.equal(embed.color, 0x2dd4bf);
+  assert.match(embed.description ?? "", /🟢 𝘓𝘐𝘝𝘌/);
+  assert.match(embed.description ?? "", /0 in line • 0 AFK • 0 on duty • Updated <t:\d+:R>/);
+  assert.match(embed.description ?? "", /Qᴜᴇᴜᴇ/);
+  assert.match(embed.description ?? "", /Oɴ ᴅᴜᴛʏ/);
+  assert.match(embed.description ?? "", /\*No one on duty\.\*/);
+  assert.match(embed.description ?? "", /🟢 in line/);
+  assert.match(embed.description ?? "", /🟡 AFK/);
+  assert.match(embed.description ?? "", /🔴 on duty/);
+  assert.equal(embed.footer?.text, "LenQ • Queue Management");
+  assert.equal(embed.timestamp, at.toISOString());
+  assert.equal("components" in payload, false);
+});
+
+test("buildQueueEmbed shares formatEntry for queue and on-duty people", () => {
+  const person = {
+    position: 1,
+    name: "Vy",
+    status: "In line" as const,
+    jobs: ["Pet Farm", "Exploration"],
+    hours: null,
+    waitMinutes: 37,
+  };
+  assert.equal(
+    formatEntry(person),
+    "1 Vy\nStatus: 🟢 In line\nJobs: Pet Farm, Exploration\nHours: - · Wait: 37m",
+  );
+  const embed = buildQueueEmbed({
+    inLine: 2,
+    afk: 0,
+    onDuty: 1,
+    updatedAt: new Date("2026-09-17T00:00:00.000Z"),
+    queue: [
+      person,
+      {
+        position: 2,
+        name: "Leno",
+        status: "AFK",
+        jobs: ["Dungeon", "Abyss", "Pet Farm"],
+        hours: "2.5h",
+        waitMinutes: 12,
+      },
+    ],
+    onDutyList: [
+      {
+        position: 1,
+        name: "Benjo",
+        status: "On duty",
+        jobs: ["PvP"],
+        hours: "8h",
+        waitMinutes: 14,
+      },
+    ],
+  }).toJSON();
+  assert.match(embed.description ?? "", /----------/);
+  assert.match(embed.description ?? "", /Status: 🟡 AFK/);
+  assert.match(embed.description ?? "", /1 Benjo\nStatus: 🔴 On duty/);
+  assert.equal(embed.description?.includes("*No one on duty.*"), false);
 });
 
 test("on-duty block is a bulleted mention and job list", () => {

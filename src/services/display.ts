@@ -42,7 +42,7 @@ export async function upsertDutyLineMessage(
     ? await channel.messages.fetch(existingId).catch(() => null)
     : null;
 
-  if (existing?.flags.has(MessageFlags.IsComponentsV2)) {
+  if (existing && !existing.flags.has(MessageFlags.IsComponentsV2)) {
     await withTransientRetry(() => existing.edit(payload));
     return existing.id;
   }

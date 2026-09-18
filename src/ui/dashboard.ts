@@ -1,59 +1,165 @@
 import {
   ContainerBuilder,
+  EmbedBuilder,
   MessageFlags,
   SeparatorBuilder,
   SeparatorSpacingSize,
   TextDisplayBuilder,
 } from "discord.js";
 import { BRAND_COLOR } from "../config/defaults.js";
-import type { DutyLine, DutyLineRow } from "../types.js";
-import { discordTimestamp, formatClock } from "../services/time.js";
+import type { DutyLine, DutyLineRow, DutyStatus } from "../types.js";
+import { discordTimestamp } from "../services/time.js";
 import { userStatusButtons } from "./components.js";
-import { dutyStatusBadge, formatDutyLineTable, formatOnDutyBody } from "./embeds.js";
-import { doubleStruck, sansItalic } from "./text-style.js";
+import { dutyDisplayName, dutyStatusBadge, formatDutyLineTable } from "./embeds.js";
+
+const QUEUE_EMBED_COLOR = 0x2dd4bf;
+const QUEUE_TITLE = "𝗤𝘂𝗲𝘂𝗲";
+const LIVE_LABEL = "𝘓𝘐𝘝𝘌";
+const QUEUE_SECTION = "Qᴜᴇᴜᴇ";
+const ON_DUTY_SECTION = "Oɴ ᴅᴜᴛʏ";
+const ENTRY_DIVIDER = "----------";
+const QUEUE_CARD_LIMIT = 8;
+
+export interface QueueEmbedPerson {
+  position: number;
+  name: string;
+  status: "In line" | "AFK" | "On duty";
+  jobs: string[];
+  hours: string | number | null;
+  waitMinutes: number;
+}
+
+export interface QueueEmbedData {
+  inLine: number;
+  afk: number;
+  onDuty: number;
+  updatedAt?: Date;
+  queue: QueueEmbedPerson[];
+  onDutyList: QueueEmbedPerson[];
+}
+
+function statusEmoji(status: QueueEmbedPerson["status"]): string {
+  if (status === "AFK") return "🟡";
+  if (status === "On duty") return "🔴";
+  return "🟢";
+}
+
+function dutyStatusPhrase(status: DutyStatus): QueueEmbedPerson["status"] {
+  if (status === "afk") return "AFK";
+  if (status === "on_duty") return "On duty";
+  return "In line";
+}
+
+function shortJobName(name: string): string {
+  const slash = name.indexOf("/");
+  return slash > 0 ? name.slice(0, slash).trim() : name;
+}
+
+function hoursText(hours: string | number | null | undefined): string {
+  if (hours == null || hours === "") return "-";
+  return String(hours);
+}
+
+function waitMinutesSince(from: string, now: Date): number {
+  const start = new Date(from).getTime();
+  const ms = now.getTime() - start;
+  if (!Number.isFinite(ms) || ms < 0) return 0;
+  return Math.floor(ms / 60_000);
+}
+
+function hoursFromDuration(hours: number | null): string | null {
+  if (hours == null) return null;
+  if (Number.isInteger(hours)) return `${hours}h`;
+  return `${hours.toFixed(1)}h`;
+}
+
+function jobsForRow(row: DutyLineRow, totalJobCount: number): string[] {
+  const source =
+    row.status === "on_duty" && row.acceptedJobs?.length ? row.acceptedJobs : row.jobs;
+  if (source.length === 0) return ["-"];
+  if (totalJobCount > 0 && source.length >= totalJobCount) return ["All jobs"];
+  const names = source.map((job) => shortJobName(job.name)).filter(Boolean);
+  return names.length ? names : ["-"];
+}
+
+function toEmbedPerson(
+  row: DutyLineRow,
+  totalJobCount: number,
+  now: Date,
+): QueueEmbedPerson {
+  return {
+    position: row.position,
+    name: dutyDisplayName(row),
+    status: dutyStatusPhrase(row.status),
+    jobs: jobsForRow(row, totalJobCount),
+    hours: hoursFromDuration(row.durationHours),
+    waitMinutes: waitMinutesSince(row.availableFrom, now),
+  };
+}
+
+export function formatEntry(person: QueueEmbedPerson): string {
+  return [
+    `${person.position} ${person.name}`,
+    `Status: ${statusEmoji(person.status)} ${person.status}`,
+    `Jobs: ${person.jobs.join(", ") || "-"}`,
+    `Hours: ${hoursText(person.hours)} · Wait: ${person.waitMinutes}m`,
+  ].join("\n");
+}
+
+function formatEntryList(people: QueueEmbedPerson[]): string {
+  return people.map(formatEntry).join(`\n${ENTRY_DIVIDER}\n`);
+}
+
+export function buildQueueEmbed(queueData: QueueEmbedData): EmbedBuilder {
+  const updatedAt = queueData.updatedAt ?? new Date();
+  const unix = Math.floor(updatedAt.getTime() / 1000);
+  const queueBody = queueData.queue.length
+    ? `${formatEntryList(queueData.queue)}\n${ENTRY_DIVIDER}`
+    : "";
+  const onDutyBody = queueData.onDutyList.length
+    ? formatEntryList(queueData.onDutyList)
+    : "*No one on duty.*";
+
+  const description = [
+    `🟢 ${LIVE_LABEL}`,
+    `${queueData.inLine} in line • ${queueData.afk} AFK • ${queueData.onDuty} on duty • Updated <t:${unix}:R>`,
+    QUEUE_SECTION,
+    queueBody,
+    "🟢 in line",
+    "🟡 AFK",
+    "🔴 on duty",
+    ON_DUTY_SECTION,
+    onDutyBody,
+  ]
+    .filter((block) => block.length > 0)
+    .join("\n");
+
+  return new EmbedBuilder()
+    .setTitle(QUEUE_TITLE)
+    .setColor(QUEUE_EMBED_COLOR)
+    .setDescription(description)
+    .setFooter({ text: "LenQ • Queue Management" })
+    .setTimestamp(updatedAt);
+}
 
 export function dutyLineDashboardPayload(
   line: DutyLine,
-  timezone: string,
+  _timezone: string,
   updatedAt = new Date(),
 ) {
-  const container = new ContainerBuilder()
-    .setAccentColor(BRAND_COLOR)
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        [
-          `## ${doubleStruck("Queue")}`,
-          `🟢 **${sansItalic("LIVE")}**`,
-          `${line.inLine} in line • ${line.afkCount} AFK • ${line.onDutyCount} on duty`,
-          `Updated ${discordTimestamp(updatedAt, "R")}`,
-        ].join("\n"),
-      ),
-    )
-    .addSeparatorComponents(
-      new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small),
-    )
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `-# **${sansItalic("QUEUE")}**\n${formatDutyLineTable(line, timezone, updatedAt)}`,
-      ),
-    )
-    .addSeparatorComponents(
-      new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small),
-    )
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `**${sansItalic("On duty")}**\n${formatOnDutyBody(line, timezone, updatedAt)}`,
-      ),
-    )
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `-# ${sansItalic("LenQ")} • ${sansItalic("Queue Management")} · ${formatClock(updatedAt, timezone)}`,
-      ),
-    );
+  const embed = buildQueueEmbed({
+    inLine: line.inLine,
+    afk: line.afkCount,
+    onDuty: line.onDutyCount,
+    updatedAt,
+    queue: line.rows.slice(0, QUEUE_CARD_LIMIT).map((row) =>
+      toEmbedPerson(row, line.jobCount, updatedAt),
+    ),
+    onDutyList: line.onDuty.map((row) => toEmbedPerson(row, line.jobCount, updatedAt)),
+  });
 
   return {
-    flags: MessageFlags.IsComponentsV2 as const,
-    components: [container],
+    embeds: [embed],
     allowedMentions: { parse: [] as Array<"users" | "roles" | "everyone"> },
   };
 }

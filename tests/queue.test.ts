@@ -24,7 +24,7 @@ import {
 } from "../src/services/queue.js";
 import { formatDashboardEntry, formatDutyLineTable, formatJobList, formatJobTable, formatOnDutyBody, formatQueuePanelLines, joinedEmbed, pickDiscordDisplayName, queuePanelEmbed } from "../src/ui/embeds.js";
 import { dutyLineDashboardPayload } from "../src/ui/dashboard.js";
-import { sansItalic } from "../src/ui/text-style.js";
+import { doubleStruck, sansItalic } from "../src/ui/text-style.js";
 import { userQueueButtons } from "../src/ui/components.js";
 import { personalStatusChannelName, isPersonalStatusChannelName, personalStatusOverwrites, statusCategoryOverwrites } from "../src/services/user-status-channel.js";
 import { PERSONAL_STATUS_CHANNELS_ENABLED } from "../src/config/defaults.js";
@@ -640,7 +640,7 @@ test("duty line card includes a live updated timestamp", () => {
   assert.match(json, /Updated <t:\d+:R>/);
   assert.match(json, new RegExp(`-# \\*\\*${sansItalic("QUEUE")}\\*\\*`));
   assert.match(json, new RegExp(`\\*\\*${sansItalic("On duty")}\\*\\*`));
-  assert.match(json, new RegExp(sansItalic("DUTY LINE")));
+  assert.match(json, new RegExp(doubleStruck("Queue")));
   assert.match(json, new RegExp(sansItalic("LIVE")));
   assert.match(json, new RegExp(sansItalic("LenQ")));
   assert.equal(json.includes("BotLenoAPP"), false);

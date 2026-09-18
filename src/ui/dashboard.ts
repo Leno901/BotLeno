@@ -10,7 +10,7 @@ import type { DutyLine, DutyLineRow } from "../types.js";
 import { discordTimestamp, formatClock } from "../services/time.js";
 import { userStatusButtons } from "./components.js";
 import { dutyStatusBadge, formatDutyLineTable, formatOnDutyBody } from "./embeds.js";
-import { sansItalic } from "./text-style.js";
+import { doubleStruck, sansItalic } from "./text-style.js";
 
 export function dutyLineDashboardPayload(
   line: DutyLine,
@@ -22,7 +22,7 @@ export function dutyLineDashboardPayload(
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         [
-          `## ${sansItalic("DUTY LINE")}`,
+          `## ${doubleStruck("Queue")}`,
           `🟢 **${sansItalic("LIVE")}**`,
           `${line.inLine} in line • ${line.afkCount} AFK • ${line.onDutyCount} on duty`,
           `Updated ${discordTimestamp(updatedAt, "R")}`,

@@ -6,7 +6,8 @@ import type {
 import type { AppContext } from "../app-context.js";
 import { Ids, parseSendJoButton } from "./ids.js";
 import {
-  handleAfk,
+  handleHours,
+  handleHoursModal,
   handleJoinModal,
   handleJoinOpen,
   handleLeaveCancel,
@@ -37,8 +38,8 @@ export async function handleButton(
       case Ids.joinOpen:
         await handleJoinOpen(interaction, ctx);
         return;
-      case Ids.afk:
-        await handleAfk(interaction, ctx);
+      case Ids.hours:
+        await handleHours(interaction, ctx);
         return;
       case Ids.lineup:
         await handleLineup(interaction, ctx);
@@ -102,6 +103,10 @@ export async function handleModal(
   ctx: AppContext,
 ): Promise<void> {
   try {
+    if (interaction.customId === Ids.hoursModal) {
+      await handleHoursModal(interaction, ctx);
+      return;
+    }
     if (
       interaction.customId === Ids.joinModal ||
       interaction.customId.startsWith(Ids.joinModalPrefix)

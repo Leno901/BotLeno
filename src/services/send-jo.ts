@@ -14,6 +14,7 @@ import { AppError } from "./errors.js";
 import { logQueueActivity } from "./activity-log.js";
 import { dispatchEntry, nextReadyForJob, recordOfferPass } from "./queue.js";
 import { discordTimestamp } from "./time.js";
+import { closeUserStatusChannel } from "./user-status-channel.js";
 
 interface OfferRef {
   channelId: string;
@@ -359,7 +360,7 @@ async function onTimeout(
   const previousUserId = chain.currentUserId;
   chain.skipEntryIds.push(chain.currentEntryId);
   await closeOfferMessage(ctx, chain, "timeout");
-  recordOfferPass(ctx.db, {
+  const pass = recordOfferPass(ctx.db, {
     guildId: chain.guildId,
     entryId: chain.currentEntryId,
     actorId: chain.staffId,
@@ -367,11 +368,18 @@ async function onTimeout(
   });
   ctx.display.schedule(chain.guildId);
   logQueueActivity(ctx, chain.guildId, {
-    action: "J.O. timeout",
+    action: pass.removed ? "removed" : "J.O. timeout",
     userId: previousUserId,
     actorId: chain.staffId,
     detail: chain.queueName,
   });
+  if (pass.removed) {
+    const guild = await ctx.client.guilds.fetch(chain.guildId).catch(() => null);
+    const entry = store.getEntry(ctx.db, chain.currentEntryId);
+    if (guild && entry) {
+      await closeUserStatusChannel(ctx, guild, entry).catch(() => undefined);
+    }
+  }
   await continueAfterReject(ctx, chain, "timeout", previousUserId);
 }
 

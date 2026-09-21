@@ -67,7 +67,7 @@ export const BUTTON_COOLDOWN_MS = 1000;
 export const EXPIRATION_INTERVAL_MS = 15_000;
 export const PANEL_DEBOUNCE_MS = 1200;
 export const SEND_JO_TIMEOUT_MS = 20_000;
-export const SEND_JO_STRIKES_TO_REQUEUE = 2;
+export const SEND_JO_STRIKES_TO_REMOVE = 2;
 export const SEND_JO_OFFER_MAX_LENGTH = 1000;
 export const EPHEMERAL_AUTO_DELETE_MS = 5_000;
 

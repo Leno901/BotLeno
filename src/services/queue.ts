@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { ABSOLUTE_MAX_HOURS, SEND_JO_STRIKES_TO_REQUEUE } from "../config/defaults.js";
+import { ABSOLUTE_MAX_HOURS, SEND_JO_STRIKES_TO_REMOVE } from "../config/defaults.js";
 import type { Db } from "../database/client.js";
 import * as store from "../database/store.js";
 import type {
@@ -278,7 +278,6 @@ export function listQueueDashboard(
 
 function dutyStatus(entry: QueueEntry): DutyStatus {
   if (entry.status === "active") return "on_duty";
-  if (entry.isAfk) return "afk";
   return "ready";
 }
 
@@ -331,7 +330,7 @@ export function listDutyLine(
     return {
       rows,
       inLine: rows.length,
-      afkCount: rows.filter((row) => row.status === "afk").length,
+      afkCount: 0,
       onDutyCount: onDuty.length,
       onDuty,
       jobCount: store.listQueues(db, guildId).length,
@@ -339,29 +338,31 @@ export function listDutyLine(
   })();
 }
 
-export function toggleAfk(
+export function updateJobHourPrefs(
   db: Db,
-  options: { guildId: string; userId: string; now?: Date },
+  options: {
+    guildId: string;
+    userId: string;
+    jobHourPrefs: Record<string, JobHourPref>;
+    now?: Date;
+  },
 ): UserQueueView {
   const now = options.now ?? new Date();
   return db.transaction(() => {
     expireGuild(db, options.guildId, now);
     const entry = findActive(db, options.guildId, options.userId);
     if (entry.status === "active") {
-      throw new AppError(
-        "You are on duty. Ask staff to complete the job before going AFK.",
-        "CANNOT_AFK",
-      );
+      throw new AppError("You cannot edit hours while on duty.", "ON_DUTY");
     }
-    const updated = store.updateEntryAfk(db, entry.id, !entry.isAfk);
+    const updated = store.updateEntryJobHourPrefs(db, entry.id, options.jobHourPrefs);
     const queue = requireQueue(db, updated.queueId, options.guildId);
     store.insertHistory(db, {
       guildId: options.guildId,
       queueId: queue.id,
       userId: options.userId,
       actorId: options.userId,
-      action: updated.isAfk ? "afk" : "ready",
-      details: null,
+      action: "hours",
+      details: JSON.stringify(options.jobHourPrefs),
     });
     return viewFor(db, updated, queue);
   })();
@@ -376,7 +377,7 @@ export function dispatchNext(
     expireGuild(db, options.guildId, now);
     const next = store
       .listLiveEntries(db, options.guildId)
-      .find((entry) => entry.status === "waiting" && !entry.isAfk);
+      .find((entry) => entry.status === "waiting");
     if (!next) {
       throw new AppError("No one in the duty line is ready to dispatch.", "NOT_FOUND");
     }
@@ -465,7 +466,7 @@ export function dispatchEntry(
     if (!entry || entry.guildId !== options.guildId) {
       throw new AppError("That queue entry could not be found.", "NOT_FOUND");
     }
-    if (entry.status !== "waiting" || entry.isAfk) {
+    if (entry.status !== "waiting") {
       throw new AppError("That user is not READY for this J.O.", "NOT_READY");
     }
     const jobs = store.listEntryJobs(db, entry.id);
@@ -570,13 +571,13 @@ export function recordOfferPass(
     reason: "declined" | "timeout";
     now?: Date;
   },
-): { strikes: number; requeued: boolean } {
+): { strikes: number; removed: boolean } {
   const now = options.now ?? new Date();
   return db.transaction(() => {
     expireGuild(db, options.guildId, now);
     const entry = store.getEntry(db, options.entryId);
     if (!entry || entry.guildId !== options.guildId || entry.status !== "waiting") {
-      return { strikes: 0, requeued: false };
+      return { strikes: 0, removed: false };
     }
     if (options.reason === "declined") {
       store.insertHistory(db, {
@@ -587,21 +588,20 @@ export function recordOfferPass(
         action: "declined",
         details: JSON.stringify({ strikes: entry.offerStrikes }),
       });
-      return { strikes: entry.offerStrikes, requeued: false };
+      return { strikes: entry.offerStrikes, removed: false };
     }
     const strikes = entry.offerStrikes + 1;
-    if (strikes >= SEND_JO_STRIKES_TO_REQUEUE) {
-      store.updateEntrySortKey(db, entry.id, store.nextSortKey(db, options.guildId));
-      store.updateOfferStrikes(db, entry.id, 0);
+    if (strikes >= SEND_JO_STRIKES_TO_REMOVE) {
+      store.updateEntryStatus(db, entry.id, "skipped");
       store.insertHistory(db, {
         guildId: options.guildId,
         queueId: entry.queueId,
         userId: entry.userId,
         actorId: options.actorId,
-        action: "requeued",
+        action: "removed",
         details: JSON.stringify({ after: options.reason, strikes }),
       });
-      return { strikes, requeued: true };
+      return { strikes, removed: true };
     }
     store.updateOfferStrikes(db, entry.id, strikes);
     store.insertHistory(db, {
@@ -612,7 +612,7 @@ export function recordOfferPass(
       action: options.reason,
       details: JSON.stringify({ strikes }),
     });
-    return { strikes, requeued: false };
+    return { strikes, removed: false };
   })();
 }
 

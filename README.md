@@ -155,7 +155,7 @@ Availability expires from the stored timestamp. A background worker checks every
 
 ## Staff J.O. offers
 
-Staff (BotLenoAPP Staff role or Manage Server) run `/send-jo`, pick a J.O. category, and type the offer. BotLeno DMs the first **READY** person in line who selected that job (skips AFK, ON DUTY, and anyone who already has a live offer). They have **20 seconds** to press Yes or No. Decline or timeout immediately offers the next matching person. Several staff can send J.O.s at once. If DMs are closed, the offer is posted in `#queue-start` with a mention and auto-deleted afterward.
+Staff (BotLenoAPP Staff role or Manage Server) run `/send-jo`, pick a J.O. category, and type the offer. BotLeno DMs the first **READY** person in line who selected that job (skips ON DUTY and anyone who already has a live offer). They have **20 seconds** to press Yes or No. Decline keeps their place. Two missed DMs remove them from the line. Several staff can send J.O.s at once. If DMs are closed, the offer is posted in `#queue-start` with a mention and auto-deleted afterward.
 
 ## Configuration
 

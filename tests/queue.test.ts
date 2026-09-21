@@ -22,8 +22,8 @@ import {
   recordOfferPass,
   setQueueStatus,
   skipEntry,
-  toggleAfk,
   pickReadyForJob,
+  updateJobHourPrefs,
 } from "../src/services/queue.js";
 import { formatDashboardEntry, formatDutyLineTable, formatJobList, formatJobTable, formatOnDutyBody, formatQueuePanelLines, joinedEmbed, pickDiscordDisplayName, queuePanelEmbed } from "../src/ui/embeds.js";
 import { buildQueueEmbed, dutyLineDashboardPayload, formatEntry } from "../src/ui/dashboard.js";
@@ -486,7 +486,7 @@ test("dashboard queue rows are stacked cards with small text", () => {
           userId: "user-b",
           displayName: "Priya",
           position: 2,
-          status: "afk",
+          status: "ready",
           jobs: [{ id: "q2", slug: "dungeon", name: "Dungeon", emoji: "🏰" }],
           durationHours: 0.8,
           availableFrom: "2026-09-17T00:00:00.000Z",
@@ -504,14 +504,12 @@ test("dashboard queue rows are stacked cards with small text", () => {
   );
   assert.match(table, /^-# 1 Alex/m);
   assert.match(table, /-#   Status: 🟢 In line/);
-  assert.match(table, /-#   Status: 🟡 AFK/);
   assert.match(table, /-#   Jobs: PvP/);
   assert.match(table, /-#   Jobs: Dungeon/);
   assert.match(table, /-#   Hours: 2\.5h · Wait: 12m/);
   assert.match(table, /-#   Hours: 0\.8h · Wait: 12m/);
   assert.match(table, /-# ---------/);
   assert.match(table, /-# 🟢 in line/);
-  assert.match(table, /-# 🟡 AFK/);
   assert.match(table, /-# 🔴 on duty/);
   assert.equal(table.includes("```"), false);
   assert.equal(table.includes("ADDED"), false);
@@ -669,16 +667,16 @@ test("duty line card includes a live updated timestamp", () => {
   assert.equal(embed.title, "Queue");
   assert.equal(embed.color, 0x14b8a6);
   assert.match(embed.description ?? "", /🟢 \*\*LIVE\*\*/);
-  assert.match(embed.description ?? "", /0 in line • 0 AFK • 0 on duty • Updated <t:\d+:R>/);
+  assert.match(embed.description ?? "", /0 in line • 0 on duty • Updated <t:\d+:R>/);
   assert.match(embed.description ?? "", /\*\*IN LINE\*\*/);
   assert.match(embed.description ?? "", /```\nNobody is in line\.\n```/);
   assert.match(embed.description ?? "", /\*\*ON DUTY\*\*/);
   assert.match(embed.description ?? "", /\*No one on duty\.\*/);
-  assert.match(embed.description ?? "", /-# 🟢 in line • 🟡 AFK • 🔴 on duty/);
+  assert.match(embed.description ?? "", /-# 🟢 in line • 🔴 on duty/);
   assert.equal((embed.description ?? "").includes("----------"), false);
   assert.equal((embed.description ?? "").includes("𝗤𝘂𝗲𝘂𝗲"), false);
   assert.equal((embed.description ?? "").includes("Qᴜᴇᴜᴇ"), false);
-  assert.match(embed.description ?? "", /🟡 AFK/);
+  assert.equal((embed.description ?? "").includes("AFK"), false);
   assert.match(embed.description ?? "", /🔴 on duty/);
   assert.equal(embed.footer?.text, "LenQ • Queue Management");
   assert.equal(embed.timestamp, at.toISOString());
@@ -715,7 +713,7 @@ test("buildQueueEmbed shares formatEntry for queue and on-duty people", () => {
       {
         position: 2,
         name: "Leno",
-        status: "AFK",
+        status: "In line",
         jobs: ["Dungeon", "Abyss", "Pet Farm"],
         hours: "2.5h",
         waitMinutes: 12,
@@ -733,7 +731,7 @@ test("buildQueueEmbed shares formatEntry for queue and on-duty people", () => {
     ],
   }).toJSON();
   assert.match(embed.description ?? "", /```\n1 Vy\nStatus: 🟢 In line/);
-  assert.match(embed.description ?? "", /Wait: 37m\n\n2 Leno\nStatus: 🟡 AFK/);
+  assert.match(embed.description ?? "", /Wait: 37m\n\n2 Leno\nStatus: 🟢 In line/);
   assert.match(embed.description ?? "", /```\n1 Benjo\nStatus: 🔴 On duty/);
   assert.equal(embed.description?.includes("----------"), false);
   assert.equal(embed.description?.includes("*No one on duty.*"), false);
@@ -825,7 +823,7 @@ test("entries without hours do not expire", () => {
   assert.ok(getUserQueueStatus(db, GUILD, USER_A, new Date("2026-09-18T00:00:00.000Z")));
 });
 
-test("AFK and dispatch update duty-line status", () => {
+test("dispatch updates duty-line status", () => {
   const db = createTestDb();
   const queueId = pvpId(db);
   joinQueue(db, {
@@ -843,7 +841,6 @@ test("AFK and dispatch update duty-line status", () => {
     now: NOW,
   });
 
-  toggleAfk(db, { guildId: GUILD, userId: USER_B, now: NOW });
   const dispatched = dispatchNext(db, {
     guildId: GUILD,
     actorId: "staff",
@@ -853,17 +850,14 @@ test("AFK and dispatch update duty-line status", () => {
   assert.equal(dispatched.entry.status, "active");
 
   const line = listDutyLine(db, GUILD, NOW);
-  assert.equal(line.afkCount, 1);
+  assert.equal(line.afkCount, 0);
   assert.equal(line.onDutyCount, 1);
   assert.equal(line.inLine, 1);
   assert.equal(line.rows.find((row) => row.userId === USER_A), undefined);
   assert.equal(line.onDuty[0]?.userId, USER_A);
-  assert.equal(line.rows.find((row) => row.userId === USER_B)?.status, "afk");
+  assert.equal(line.rows.find((row) => row.userId === USER_B)?.status, "ready");
   assert.equal(line.rows.find((row) => row.userId === USER_B)?.position, 1);
-  assert.equal(
-    pickReadyForJob(line.rows, queueId)?.userId,
-    undefined,
-  );
+  assert.equal(pickReadyForJob(line.rows, queueId)?.userId, USER_B);
 });
 
 test("queue-start job table is a padded code block without emoji", () => {
@@ -1006,17 +1000,16 @@ test("personal status channels stay gated off", () => {
   assert.equal(PERSONAL_STATUS_CHANNELS_ENABLED, false);
 });
 
-test("ephemeral queue buttons still expose leave and AFK", () => {
-  const labels = (isAfk: boolean) =>
-    userQueueButtons(true, isAfk).components.map((button) =>
+test("ephemeral queue buttons expose leave and hours", () => {
+  const labels = () =>
+    userQueueButtons(true, false).components.map((button) =>
       "label" in button.data ? button.data.label : undefined,
     );
   const ids = userQueueButtons(true, false).components.map((button) =>
     "custom_id" in button.data ? button.data.custom_id : undefined,
   );
-  assert.deepEqual(ids, [Ids.refresh, Ids.myStatus, Ids.afk, Ids.leave]);
-  assert.deepEqual(labels(false), ["Refresh", "My Status", "AFK", "Leave Queue"]);
-  assert.deepEqual(labels(true), ["Refresh", "My Status", "Ready", "Leave Queue"]);
+  assert.deepEqual(ids, [Ids.refresh, Ids.myStatus, Ids.hours, Ids.leave]);
+  assert.deepEqual(labels(), ["Refresh", "My Status", "Hours", "Leave Queue"]);
 });
 
 test("join embed hides personal status channel while the feature is off", () => {
@@ -1092,7 +1085,7 @@ test("on-duty people leave the waiting table but stay in the on-duty block", () 
   );
 });
 
-test("manual declines do not requeue; two missed DMs move to the end", () => {
+test("manual declines do not strike; two missed DMs remove from the line", () => {
   const db = createTestDb();
   const queueId = pvpId(db);
   const a = joinQueue(db, {
@@ -1125,7 +1118,7 @@ test("manual declines do not requeue; two missed DMs move to the end", () => {
     now: NOW,
   });
   assert.equal(declined.strikes, 0);
-  assert.equal(declined.requeued, false);
+  assert.equal(declined.removed, false);
   assert.equal(store.getEntry(db, a.entry.id)?.offerStrikes, 0);
   assert.equal(store.positionFor(db, store.getEntry(db, a.entry.id)!), 1);
 
@@ -1137,7 +1130,7 @@ test("manual declines do not requeue; two missed DMs move to the end", () => {
     now: NOW,
   });
   assert.equal(firstMiss.strikes, 1);
-  assert.equal(firstMiss.requeued, false);
+  assert.equal(firstMiss.removed, false);
   assert.equal(store.positionFor(db, store.getEntry(db, a.entry.id)!), 1);
 
   const secondMiss = recordOfferPass(db, {
@@ -1148,11 +1141,10 @@ test("manual declines do not requeue; two missed DMs move to the end", () => {
     now: NOW,
   });
   assert.equal(secondMiss.strikes, 2);
-  assert.equal(secondMiss.requeued, true);
-  const moved = store.getEntry(db, a.entry.id)!;
-  assert.equal(moved.status, "waiting");
-  assert.equal(moved.offerStrikes, 0);
-  assert.equal(store.positionFor(db, moved), 3);
+  assert.equal(secondMiss.removed, true);
+  const removed = store.getEntry(db, a.entry.id)!;
+  assert.equal(removed.status, "skipped");
+  assert.equal(getUserQueueStatus(db, GUILD, USER_A, NOW), null);
 });
 
 test("job hour prefs persist and skip send-jo without strikes", () => {
@@ -1185,6 +1177,36 @@ test("job hour prefs persist and skip send-jo without strikes", () => {
   assert.equal(nextReadyForJob(db, GUILD, pet, [], NOW, 15), null);
   assert.equal(nextReadyForJob(db, GUILD, pet, [], NOW, 10)?.userId, USER_A);
   assert.equal(store.getEntry(db, joined.entry.id)?.offerStrikes, 0);
+});
+
+test("updateJobHourPrefs changes bounds without moving place", () => {
+  const db = createTestDb();
+  store.ensureGuild(db, GUILD);
+  const pet = store.getQueueBySlug(db, GUILD, "pet-farm")!.id;
+  joinQueue(db, {
+    guildId: GUILD,
+    queueId: pet,
+    userId: USER_A,
+    hoursInput: "8",
+    now: NOW,
+  });
+  joinQueue(db, {
+    guildId: GUILD,
+    queueId: pet,
+    userId: USER_B,
+    hoursInput: "8",
+    now: NOW,
+  });
+  const first = getUserQueueStatus(db, GUILD, USER_A, NOW)!;
+  const updated = updateJobHourPrefs(db, {
+    guildId: GUILD,
+    userId: USER_A,
+    jobHourPrefs: { [pet]: { min: null, max: 12 } },
+    now: NOW,
+  });
+  assert.equal(updated.position, first.position);
+  assert.deepEqual(updated.entry.jobHourPrefs[pet], { min: null, max: 12 });
+  assert.equal(store.positionFor(db, store.getEntry(db, first.entry.id)!), 1);
 });
 
 test("join hours modal is max and min number fields per job", () => {

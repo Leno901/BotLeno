@@ -10,11 +10,11 @@ import {
   joinQueue,
   leaveQueue,
   listQueueBoard,
-  toggleAfk,
+  updateJobHourPrefs,
 } from "../services/queue.js";
 import { parseDurationHours } from "../services/hours.js";
 import { AppError, isAppError } from "../services/errors.js";
-import { parseJoinModal, isUuid, joinJobBoundFieldId } from "./ids.js";
+import { parseJoinModal, isUuid, joinJobBoundFieldId, Ids } from "./ids.js";
 import { setPendingJoin, takePendingJoin } from "./session.js";
 import { buttonCooldown, joinCooldown, requireGuildId } from "./guards.js";
 import {
@@ -90,7 +90,6 @@ export async function showMyStatus(
       components: [
         userQueueButtons(
           view.queue.allowLeave,
-          view.entry.isAfk,
           view.entry.status === "active",
         ),
       ],
@@ -133,7 +132,6 @@ export async function handleQueueSelect(
         components: [
           userQueueButtons(
             existing.queue.allowLeave,
-            existing.entry.isAfk,
             existing.entry.status === "active",
           ),
         ],
@@ -155,6 +153,30 @@ function modalField(interaction: ModalSubmitInteraction, customId: string): stri
   } catch {
     return null;
   }
+}
+
+function parseJobHourPrefsFromModal(
+  interaction: ModalSubmitInteraction,
+  queueIds: string[],
+): Record<string, { min: number | null; max: number | null }> {
+  const jobHourPrefs: Record<string, { min: number | null; max: number | null }> = {};
+  for (const queueId of queueIds) {
+    const maxRaw = modalField(interaction, joinJobBoundFieldId(queueId, "max"));
+    const minRaw = modalField(interaction, joinJobBoundFieldId(queueId, "min"));
+    const maxHours = maxRaw == null ? { ok: true as const, hours: null } : parseDurationHours(maxRaw, 0.25);
+    const minHours = minRaw == null ? { ok: true as const, hours: null } : parseDurationHours(minRaw, 0.25);
+    if (!maxHours.ok) throw new AppError(maxHours.error, "INVALID_JOB_HOURS");
+    if (!minHours.ok) throw new AppError(minHours.error, "INVALID_JOB_HOURS");
+    if (
+      minHours.hours != null &&
+      maxHours.hours != null &&
+      minHours.hours > maxHours.hours
+    ) {
+      throw new AppError("Min cannot be greater than Max.", "INVALID_JOB_HOURS");
+    }
+    jobHourPrefs[queueId] = { min: minHours.hours, max: maxHours.hours };
+  }
+  return jobHourPrefs;
 }
 
 export async function handleJoinModal(
@@ -190,25 +212,11 @@ export async function handleJoinModal(
 
   joinCooldown(ctx, interaction.user.id);
   const hoursInput = modalField(interaction, "hours") ?? "";
-  const jobHourPrefs: Record<string, { min: number | null; max: number | null }> = {};
   try {
-    for (const queueId of queueIds) {
-      const maxRaw = modalField(interaction, joinJobBoundFieldId(queueId, "max"));
-      const minRaw = modalField(interaction, joinJobBoundFieldId(queueId, "min"));
-      const maxHours = maxRaw == null ? { ok: true as const, hours: null } : parseDurationHours(maxRaw, 0.25);
-      const minHours = minRaw == null ? { ok: true as const, hours: null } : parseDurationHours(minRaw, 0.25);
-      if (!maxHours.ok) throw new AppError(maxHours.error, "INVALID_JOB_HOURS");
-      if (!minHours.ok) throw new AppError(minHours.error, "INVALID_JOB_HOURS");
-      if (maxHours.hours == null && minHours.hours == null) continue;
-      if (
-        minHours.hours != null &&
-        maxHours.hours != null &&
-        minHours.hours > maxHours.hours
-      ) {
-        throw new AppError("Min cannot be greater than Max.", "INVALID_JOB_HOURS");
-      }
-      jobHourPrefs[queueId] = { min: minHours.hours, max: maxHours.hours };
-    }
+    const parsedPrefs = parseJobHourPrefsFromModal(interaction, queueIds);
+    const jobHourPrefs = Object.fromEntries(
+      Object.entries(parsedPrefs).filter(([, pref]) => pref.min != null || pref.max != null),
+    );
     const result = joinQueue(ctx.db, {
       guildId,
       queueIds,
@@ -272,7 +280,6 @@ export async function handleJoinModal(
         components: [
           userQueueButtons(
             result.jobs.every((job) => job.allowLeave),
-            result.entry.isAfk,
             result.entry.status === "active",
           ),
         ],
@@ -384,7 +391,6 @@ export async function handleLeaveCancel(
       components: [
         userQueueButtons(
           view.queue.allowLeave,
-          view.entry.isAfk,
           view.entry.status === "active",
         ),
       ],
@@ -399,36 +405,91 @@ export async function handleJoinOpen(
   await showUserPanel(interaction, ctx);
 }
 
-export async function handleAfk(
+export async function handleHours(
   interaction: ButtonInteraction,
   ctx: AppContext,
 ): Promise<void> {
   const guildId = requireGuildId(interaction);
   buttonCooldown(ctx, interaction.user.id);
+  const view = getUserQueueStatus(ctx.db, guildId, interaction.user.id);
+  if (!view) {
+    await safeReply(
+      interaction,
+      ephemeral({ embeds: [warningEmbed("You are not in the duty line.")] }),
+    );
+    return;
+  }
+  if (view.entry.status === "active") {
+    await safeReply(
+      interaction,
+      ephemeral({ embeds: [warningEmbed("You cannot edit hours while on duty.")] }),
+    );
+    return;
+  }
+  await interaction.showModal(
+    joinHoursModal(view.jobs, view.entry.jobHourPrefs, Ids.hoursModal),
+  );
+}
+
+export async function handleHoursModal(
+  interaction: ModalSubmitInteraction,
+  ctx: AppContext,
+): Promise<void> {
+  const guildId = requireGuildId(interaction);
+  buttonCooldown(ctx, interaction.user.id);
+  const view = getUserQueueStatus(ctx.db, guildId, interaction.user.id);
+  if (!view) {
+    await safeReply(
+      interaction,
+      ephemeral({ embeds: [warningEmbed("You are not in the duty line.")] }),
+    );
+    return;
+  }
   try {
-    const view = toggleAfk(ctx.db, {
+    const modalIds: string[] = [];
+    let fields = 0;
+    for (const job of view.jobs) {
+      for (let i = 0; i < 2; i += 1) {
+        if (fields >= 5) break;
+        fields += 1;
+        if (!modalIds.includes(job.id)) modalIds.push(job.id);
+      }
+      if (fields >= 5) break;
+    }
+    const parsed = parseJobHourPrefsFromModal(interaction, modalIds);
+    const next = { ...view.entry.jobHourPrefs };
+    for (const jobId of modalIds) {
+      const pref = parsed[jobId];
+      if (!pref || (pref.min == null && pref.max == null)) {
+        delete next[jobId];
+        continue;
+      }
+      next[jobId] = pref;
+    }
+    const updated = updateJobHourPrefs(ctx.db, {
       guildId,
       userId: interaction.user.id,
+      jobHourPrefs: next,
     });
     ctx.display.schedule(guildId);
     logQueueActivity(ctx, guildId, {
-      action: view.entry.isAfk ? "AFK" : "ready",
+      action: "hours",
       userId: interaction.user.id,
       actorId: interaction.user.id,
+      detail: "updated job hours",
     });
-    const embeds = [userStatusEmbed(view, timezone(ctx, guildId))];
-    const components = [
-      userQueueButtons(
-        view.queue.allowLeave,
-        view.entry.isAfk,
-        view.entry.status === "active",
-      ),
-    ];
-    if (interaction.replied || interaction.deferred) {
-      await safeReply(interaction, ephemeral({ embeds, components }));
-      return;
-    }
-    await interaction.update({ embeds, components });
+    await safeReply(
+      interaction,
+      ephemeral({
+        embeds: [userStatusEmbed(updated, timezone(ctx, guildId))],
+        components: [
+          userQueueButtons(
+            updated.queue.allowLeave,
+            updated.entry.status === "active",
+          ),
+        ],
+      }),
+    );
   } catch (error) {
     await replyAppError(interaction, error, ctx.logger, ctx.db);
   }

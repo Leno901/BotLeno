@@ -17,15 +17,15 @@ Paste this as one Discord message (include the ``` lines):
 │ Empty = any length                 │
 │                                    │
 │ Live line: #queue-dashboard        │
-│ AFK = in line, no job DMs          │
-│ Ready = can be offered again       │
+│ Hours = edit max/min in line       │
+│ Ready = can be offered             │
 │ Leave = confirm, then leave        │
 │ /queue  /myqueue  /leavequeue      │
 │                                    │
 │ JOB DM — 20 seconds                │
 │ Yes = on duty                      │
 │ No  = keep your place              │
-│ Miss twice = end of the line       │
+│ Miss twice = leave the line        │
 │ Wrong hours = skipped              │
 ├────────────────────────────────────┤
 │ STAFF                              │

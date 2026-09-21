@@ -9,7 +9,6 @@ import {
   listDutyLine,
   nextReadyForJob,
   pickReadyForJob,
-  toggleAfk,
 } from "../src/services/queue.js";
 import { validateOfferText, offerDeadlineUnix } from "../src/services/send-jo.js";
 import { SEND_JO_TIMEOUT_MS } from "../src/config/defaults.js";
@@ -32,9 +31,8 @@ function ids(db: ReturnType<typeof createTestDb>) {
   };
 }
 
-test("pickReadyForJob skips AFK, on-duty, wrong job, then exhausted", () => {
+test("pickReadyForJob skips on-duty, wrong job, then exhausted", () => {
   const rows = [
-    { entryId: "a", status: "afk" as const, jobs: [{ id: "pvp" }] },
     { entryId: "b", status: "on_duty" as const, jobs: [{ id: "pvp" }] },
     { entryId: "c", status: "ready" as const, jobs: [{ id: "dungeon" }] },
     { entryId: "d", status: "ready" as const, jobs: [{ id: "pvp" }] },
@@ -87,7 +85,7 @@ test("nextReadyForJob walks the duty line in order", () => {
     hoursInput: "8",
     now: NOW,
   });
-  joinQueue(db, {
+  const c = joinQueue(db, {
     guildId: GUILD,
     queueId: pvp,
     userId: USER_C,
@@ -102,15 +100,13 @@ test("nextReadyForJob walks the duty line in order", () => {
     now: NOW,
   });
 
-  toggleAfk(db, { guildId: GUILD, userId: USER_C, now: NOW });
-
   const first = nextReadyForJob(db, GUILD, pvp, [], NOW);
   assert.equal(first?.userId, USER_B);
 
   const second = nextReadyForJob(db, GUILD, pvp, [b.entry.id], NOW);
-  assert.equal(second?.userId, USER_D);
+  assert.equal(second?.userId, USER_C);
 
-  const exhausted = nextReadyForJob(db, GUILD, pvp, [b.entry.id, d.entry.id], NOW);
+  const exhausted = nextReadyForJob(db, GUILD, pvp, [b.entry.id, c.entry.id, d.entry.id], NOW);
   assert.equal(exhausted, null);
 });
 
@@ -235,11 +231,11 @@ test("dispatchEntry accepts the overlapping J.O.s when several were offered", ()
   );
 });
 
-test("dispatchEntry rejects AFK and on-duty users", () => {
+test("dispatchEntry rejects on-duty users", () => {
   const db = createTestDb();
   const { pvp } = ids(db);
 
-  const a = joinQueue(db, {
+  joinQueue(db, {
     guildId: GUILD,
     queueId: pvp,
     userId: USER_A,
@@ -253,19 +249,6 @@ test("dispatchEntry rejects AFK and on-duty users", () => {
     hoursInput: "8",
     now: NOW,
   });
-
-  toggleAfk(db, { guildId: GUILD, userId: USER_A, now: NOW });
-  assert.throws(
-    () =>
-      dispatchEntry(db, {
-        guildId: GUILD,
-        entryId: a.entry.id,
-        actorId: "staff",
-        queueId: pvp,
-        now: NOW,
-      }),
-    (error: unknown) => isAppError(error) && error.code === "NOT_READY",
-  );
 
   const onDuty = dispatchNext(db, { guildId: GUILD, actorId: "staff", now: NOW });
   assert.throws(

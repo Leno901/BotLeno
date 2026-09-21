@@ -33,7 +33,7 @@ export function queueSelectRow(queues: QueueWithCount[]) {
   return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu);
 }
 
-export function userQueueButtons(showLeave = true, isAfk = false, onDuty = false) {
+export function userQueueButtons(showLeave = true, onDuty = false) {
   const refresh = new ButtonBuilder()
     .setCustomId(Ids.refresh)
     .setLabel("Refresh")
@@ -44,13 +44,13 @@ export function userQueueButtons(showLeave = true, isAfk = false, onDuty = false
     .setLabel("My Status")
     .setStyle(ButtonStyle.Primary);
 
-  const afk = new ButtonBuilder()
-    .setCustomId(Ids.afk)
-    .setLabel(isAfk ? "Ready" : "AFK")
-    .setStyle(isAfk ? ButtonStyle.Success : ButtonStyle.Secondary)
+  const hours = new ButtonBuilder()
+    .setCustomId(Ids.hours)
+    .setLabel("Hours")
+    .setStyle(ButtonStyle.Secondary)
     .setDisabled(onDuty);
 
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(refresh, status, afk);
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(refresh, status, hours);
 
   if (showLeave) {
     row.addComponents(
@@ -65,17 +65,16 @@ export function userQueueButtons(showLeave = true, isAfk = false, onDuty = false
 }
 
 export function userStatusButtons(options: {
-  isAfk: boolean;
   onDuty: boolean;
   allowLeave: boolean;
 }) {
-  const afk = new ButtonBuilder()
-    .setCustomId(Ids.afk)
-    .setLabel(options.isAfk ? "Ready" : "AFK")
-    .setStyle(options.isAfk ? ButtonStyle.Success : ButtonStyle.Secondary)
+  const hours = new ButtonBuilder()
+    .setCustomId(Ids.hours)
+    .setLabel("Hours")
+    .setStyle(ButtonStyle.Secondary)
     .setDisabled(options.onDuty);
 
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(afk);
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(hours);
 
   if (options.allowLeave) {
     row.addComponents(
@@ -102,32 +101,36 @@ export function leaveConfirmButtons() {
   );
 }
 
-export function joinHoursModal(queues: Array<{ id: string; name: string }>) {
+export function joinHoursModal(
+  queues: Array<{ id: string; name: string }>,
+  prefs: Record<string, { min: number | null; max: number | null }> = {},
+  customId = Ids.joinModal,
+) {
   const rows: ActionRowBuilder<TextInputBuilder>[] = [];
 
   for (const queue of queues) {
     const slash = queue.name.indexOf("/");
     const short = (slash > 0 ? queue.name.slice(0, slash).trim() : queue.name) || "Job";
+    const pref = prefs[queue.id];
     for (const bound of ["max", "min"] as const) {
       if (rows.length >= 5) break;
       const label = bound === "max" ? "Max" : "Min";
-      rows.push(
-        new ActionRowBuilder<TextInputBuilder>().addComponents(
-          new TextInputBuilder()
-            .setCustomId(joinJobBoundFieldId(queue.id, bound))
-            .setLabel(`${short} ${label}`.slice(0, 45))
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder("hours or empty")
-            .setRequired(false)
-            .setMaxLength(5),
-        ),
-      );
+      const current = bound === "max" ? pref?.max : pref?.min;
+      const input = new TextInputBuilder()
+        .setCustomId(joinJobBoundFieldId(queue.id, bound))
+        .setLabel(`${short} ${label}`.slice(0, 45))
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder("hours or empty")
+        .setRequired(false)
+        .setMaxLength(5);
+      if (current != null) input.setValue(String(current));
+      rows.push(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
     }
     if (rows.length >= 5) break;
   }
 
   return new ModalBuilder()
-    .setCustomId(Ids.joinModal)
+    .setCustomId(customId)
     .setTitle("Job Hours")
     .addComponents(...rows);
 }

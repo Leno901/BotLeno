@@ -36,7 +36,7 @@ const ACTION_TITLES: Record<string, string> = {
   complete: "Completed",
   dispatched: "Dispatched",
   expired: "Expired",
-  afk: "AFK",
+  hours: "Hours",
   ready: "Ready",
   paused: "Paused",
   pause: "Paused",
@@ -98,8 +98,8 @@ export function describeQueueAction(event: QueueLogEvent): string {
       return `${actor} dispatched ${user} — they are now on duty${extra}.`;
     case "expired":
       return `${user}'s availability expired${extra}.`;
-    case "afk":
-      return `${user} went AFK on the duty line.`;
+    case "hours":
+      return `${user} updated job hours${extra}.`;
     case "ready":
       return `${user} is ready on the duty line.`;
     case "paused":

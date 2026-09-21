@@ -73,7 +73,6 @@ export function dutyStatusBadge(status: DutyStatus): string {
 const DUTY_STATUS_LEGEND = smallLines([
   "---------",
   "🟢 in line",
-  "🟡 AFK",
   "🔴 on duty",
 ]);
 const QUEUE_CARD_LIMIT = 8;
@@ -514,7 +513,7 @@ export function sendJoOfferResultEmbed(
     .setColor(INFO_COLOR)
     .setTitle(`${queueName} J.O. skipped`)
     .setDescription(
-      `${offerText}\n\n**No response** — this offer was skipped. Two missed DMs move you to the end of the line.`,
+      `${offerText}\n\n**No response** — this offer was skipped. Two missed DMs remove you from the line.`,
     );
 }
 

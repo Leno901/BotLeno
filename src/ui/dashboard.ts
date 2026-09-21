@@ -130,7 +130,7 @@ export function buildQueueEmbed(queueData: QueueEmbedData): EmbedBuilder {
     .setDescription(
       [
         `🟢 **LIVE**`,
-        `${queueData.inLine} in line • ${queueData.afk} AFK • ${queueData.onDuty} on duty • Updated <t:${unix}:R>`,
+        `${queueData.inLine} in line • ${queueData.onDuty} on duty • Updated <t:${unix}:R>`,
         "",
         "**IN LINE**",
         queueBox,
@@ -138,7 +138,7 @@ export function buildQueueEmbed(queueData: QueueEmbedData): EmbedBuilder {
         "**ON DUTY**",
         onDutyBox,
         "",
-        "-# 🟢 in line • 🟡 AFK • 🔴 on duty",
+        "-# 🟢 in line • 🔴 on duty",
       ].join("\n"),
     )
     .setTimestamp(updatedAt);
@@ -175,17 +175,15 @@ export function personalStatusPayload(options: {
   const line: DutyLine = {
     rows: [row],
     inLine: 1,
-    afkCount: row.status === "afk" ? 1 : 0,
+    afkCount: 0,
     onDutyCount: row.status === "on_duty" ? 1 : 0,
     onDuty: row.status === "on_duty" ? [row] : [],
     jobCount,
   };
   const statusLine =
-    row.status === "afk"
-      ? "You are **AFK**. You will not be dispatched until you press Ready."
-      : row.status === "on_duty"
-        ? "You are **ON DUTY**."
-        : `You are **READY**. ${peopleAhead} ahead of you.`;
+    row.status === "on_duty"
+      ? "You are **ON DUTY**."
+      : `You are **READY**. ${peopleAhead} ahead of you.`;
 
   const container = new ContainerBuilder()
     .setAccentColor(BRAND_COLOR)
@@ -204,7 +202,6 @@ export function personalStatusPayload(options: {
     )
     .addActionRowComponents(
       userStatusButtons({
-        isAfk: row.status === "afk",
         onDuty: row.status === "on_duty",
         allowLeave,
       }),
